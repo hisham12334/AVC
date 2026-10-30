@@ -1,0 +1,181 @@
+import type { FastifyInstance } from 'fastify';
+import type { Pool } from 'pg';
+import { z } from 'zod';
+import { inTransaction } from '../db.js';
+import { AppError } from '../errors.js';
+import { emit } from '../integration/outbox.js';
+
+const searchSchema = z.object({ query: z.string().trim().min(2).max(100) });
+const customerSchema = z
+  .object({
+    fullName: z.string().trim().min(1).max(200),
+    mobileNumber: z.string().trim().min(6).max(40),
+  })
+  .strict();
+const vehicleSchema = z
+  .object({
+    customerId: z.uuid(),
+    vin: z.string().trim().max(30).optional(),
+    licensePlate: z.string().trim().max(40).optional(),
+    make: z.string().trim().min(1).max(100),
+    model: z.string().trim().min(1).max(100),
+    modelYear: z.number().int().min(1900).max(2200).optional(),
+    color: z.string().trim().max(100).optional(),
+  })
+  .strict()
+  .refine((value) => !!value.vin || !!value.licensePlate, 'VIN or license plate is required');
+
+function mobileSearch(value: string): string {
+  const digits = value.replace(/\D/g, '');
+  if (digits.length < 6)
+    throw new AppError(400, 'INVALID_MOBILE', 'Mobile number needs at least six digits');
+  return digits;
+}
+function plateSearch(value: string): string {
+  return value.toUpperCase().replace(/[\s-]/g, '');
+}
+function like(value: string): string {
+  return `%${value.replace(/[\\%_]/g, '\\$&')}%`;
+}
+
+export function registerCrmRoutes(app: FastifyInstance, db: Pool): void {
+  app.get(
+    '/api/customers',
+    { preHandler: app.requirePermission('customers:read') },
+    async (request) => {
+      const { query } = searchSchema.parse(request.query);
+      const digits = query.replace(/\D/g, '');
+      const result = await db.query(
+        `SELECT id, full_name AS "fullName", mobile_number AS "mobileNumber", created_at AS "createdAt"
+       FROM avc.customers WHERE full_name ILIKE $1 ESCAPE '\\' OR ($2 <> '' AND mobile_search LIKE $3)
+       ORDER BY created_at DESC LIMIT 20`,
+        [like(query), digits, like(digits)],
+      );
+      return { customers: result.rows };
+    },
+  );
+
+  app.post(
+    '/api/customers',
+    { preHandler: app.requirePermission('customers:create') },
+    async (request, reply) => {
+      const input = customerSchema.parse(request.body);
+      const normalized = mobileSearch(input.mobileNumber);
+      const customer = await inTransaction(db, async (client) => {
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+          `customer:${normalized}:${input.fullName.toLowerCase()}`,
+        ]);
+        const existing = await client.query(
+          'SELECT id FROM avc.customers WHERE mobile_search = $1 AND lower(full_name) = lower($2) LIMIT 1',
+          [normalized, input.fullName],
+        );
+        if (existing.rowCount)
+          throw new AppError(
+            409,
+            'POSSIBLE_DUPLICATE_CUSTOMER',
+            'A matching customer exists; search before creating another',
+          );
+        const created = await client.query(
+          `INSERT INTO avc.customers(full_name, mobile_number, mobile_search, created_by_staff_id)
+         VALUES ($1, $2, $3, $4) RETURNING id, full_name AS "fullName", mobile_number AS "mobileNumber", created_at AS "createdAt"`,
+          [input.fullName, input.mobileNumber, normalized, request.staff!.id],
+        );
+        const row = created.rows[0];
+        await emit(client, {
+          branchId: null,
+          type: 'customer.created',
+          aggregateType: 'customer',
+          aggregateId: row.id,
+          payload: { customerId: row.id, fullName: row.fullName, mobileNumber: row.mobileNumber },
+        });
+        return row;
+      });
+      return reply.status(201).send({ customer });
+    },
+  );
+
+  app.get(
+    '/api/vehicles',
+    { preHandler: app.requirePermission('vehicles:read') },
+    async (request) => {
+      const { query } = searchSchema.parse(request.query);
+      const result = await db.query(
+        `SELECT id, customer_id AS "customerId", vin, license_plate AS "licensePlate", make, model,
+              model_year AS "modelYear", color, created_at AS "createdAt"
+       FROM avc.vehicles WHERE vin ILIKE $1 ESCAPE '\\' OR license_plate ILIKE $1 ESCAPE '\\'
+          OR make ILIKE $1 ESCAPE '\\' OR model ILIKE $1 ESCAPE '\\'
+       ORDER BY created_at DESC LIMIT 20`,
+        [like(query)],
+      );
+      return { vehicles: result.rows };
+    },
+  );
+
+  app.post(
+    '/api/vehicles',
+    { preHandler: app.requirePermission('vehicles:create') },
+    async (request, reply) => {
+      const input = vehicleSchema.parse(request.body);
+      const vin = input.vin?.toUpperCase() || null;
+      const plate = input.licensePlate || null;
+      const plateKey = plate ? plateSearch(plate) : null;
+      const vehicle = await inTransaction(db, async (client) => {
+        const owner = await client.query('SELECT id FROM avc.customers WHERE id = $1', [
+          input.customerId,
+        ]);
+        if (!owner.rowCount)
+          throw new AppError(422, 'CUSTOMER_NOT_FOUND', 'Customer does not exist');
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+          `vehicle:${vin ?? `${input.customerId}:${plateKey}`}`,
+        ]);
+        const existing = await client.query(
+          `SELECT id FROM avc.vehicles WHERE ($1::text IS NOT NULL AND vin = $1)
+            OR ($2::text IS NOT NULL AND customer_id = $3 AND plate_search = $2) LIMIT 1`,
+          [vin, plateKey, input.customerId],
+        );
+        if (existing.rowCount)
+          throw new AppError(
+            409,
+            'POSSIBLE_DUPLICATE_VEHICLE',
+            'A matching vehicle exists; search before creating another',
+          );
+        const created = await client.query(
+          `INSERT INTO avc.vehicles(customer_id, vin, license_plate, plate_search, make, model, model_year, color, created_by_staff_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         RETURNING id, customer_id AS "customerId", vin, license_plate AS "licensePlate", make, model,
+                   model_year AS "modelYear", color, created_at AS "createdAt"`,
+          [
+            input.customerId,
+            vin,
+            plate,
+            plateKey,
+            input.make,
+            input.model,
+            input.modelYear ?? null,
+            input.color ?? null,
+            request.staff!.id,
+          ],
+        );
+        const row = created.rows[0];
+        await emit(client, {
+          branchId: null,
+          type: 'vehicle.created',
+          aggregateType: 'vehicle',
+          aggregateId: row.id,
+          payload: {
+            vehicleId: row.id,
+            customerId: row.customerId,
+            vin: row.vin,
+            licensePlate: row.licensePlate,
+            make: row.make,
+            model: row.model,
+            modelYear: row.modelYear,
+            color: row.color,
+          },
+        });
+        return row;
+      });
+      return reply.status(201).send({ vehicle });
+    },
+  );
+}

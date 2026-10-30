@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+!.env.test.example
+*.log
+.DS_Store
+.pnpm-store/
+apps/web/.vite/
+
+# Client source documents and local tooling stay off the public repo
+App Requirements/
+AVC Workflow and Architecture Map.md
+.claude/

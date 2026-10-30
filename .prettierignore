@@ -1,0 +1,6 @@
+App Requirements/
+AVC Workflow and Architecture Map.md
+node_modules/
+dist/
+coverage/
+pnpm-lock.yaml

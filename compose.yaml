@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: avc
+      POSTGRES_PASSWORD: avc_dev_only
+      POSTGRES_DB: avc_dev
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - avc_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U avc -d avc_dev']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  avc_pgdata:

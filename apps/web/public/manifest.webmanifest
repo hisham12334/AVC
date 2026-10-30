@@ -1,0 +1,14 @@
+{
+  "name": "AVC Cloud WMS Staff",
+  "short_name": "AVC Staff",
+  "description": "AVC workshop operations",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ecf4fd",
+  "theme_color": "#00a1f2",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

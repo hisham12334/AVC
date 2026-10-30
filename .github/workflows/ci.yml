@@ -1,0 +1,38 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: avc_test
+          POSTGRES_PASSWORD: avc_test_dev_only
+          POSTGRES_DB: avc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U avc_test -d avc_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://avc_test:avc_test_dev_only@127.0.0.1:5432/avc_test
+      DATABASE_URL: postgres://avc_test:avc_test_dev_only@127.0.0.1:5432/avc_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm migrate:validate
+      - run: pnpm build

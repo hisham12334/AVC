@@ -1,0 +1,30 @@
+{
+  "name": "avc-cloud-wms",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @avc/server dev",
+    "build": "pnpm --filter @avc/web build && pnpm --filter @avc/server build",
+    "start": "pnpm --filter @avc/server start",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "typecheck": "pnpm --filter @avc/web typecheck && pnpm --filter @avc/server typecheck",
+    "test": "vitest run",
+    "migrate:up": "pnpm --filter @avc/server migrate:up",
+    "migrate:status": "pnpm --filter @avc/server migrate:status",
+    "migrate:validate": "pnpm --filter @avc/server migrate:validate"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.10.0",
+    "eslint": "^9.39.1",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.2",
+    "vitest": "^3.2.4"
+  }
+}
