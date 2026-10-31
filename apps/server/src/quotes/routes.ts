@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import type { Pool, PoolClient } from 'pg';
+import type { Pool } from 'pg';
 import { z } from 'zod';
+import { buildBill } from '../bills/bill.js';
 import { inTransaction } from '../db.js';
 import { AppError } from '../errors.js';
 import { emit } from '../integration/outbox.js';
@@ -9,7 +10,6 @@ import {
   assertExpectedVersion,
   lockJob,
   recordEvent,
-  type LockedJob,
 } from '../jobs/lifecycle.js';
 import { issueCustomerLink } from '../track/tokens.js';
 import { loadQuotes } from './queries.js';
@@ -22,9 +22,12 @@ const money = z
   .refine((v) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-6, 'Price allows at most 2 decimals');
 const itemSchema = z
   .object({
+    // A line that answers a technician finding. Its severity and proof come from the finding.
+    findingId: z.uuid().optional(),
     title: z.string().trim().min(1).max(200),
     detail: z.string().trim().max(2000).default(''),
-    severity: z.enum(['critical', 'moderate', 'minor']),
+    // Only for lines the advisor adds themselves (services, packages): always minor.
+    severity: z.enum(['minor']).optional(),
     priceAed: money,
     evidenceIds: z.array(z.uuid()).max(20).default([]),
   })
@@ -47,83 +50,6 @@ const evidenceSchema = z
   })
   .strict();
 const linkSchema = z.object({ expectedVersion: z.number().int().min(1) }).strict();
-
-type QuoteInput = z.infer<typeof quoteSchema>;
-
-// Sales-plan rule: no photo or video, no authorization request for a yellow or red item.
-async function attachEvidence(
-  client: PoolClient,
-  jobId: string,
-  itemIds: string[],
-  items: QuoteInput['items'],
-): Promise<void> {
-  const used = new Set<string>();
-  for (const [index, item] of items.entries()) {
-    const needsProof = item.severity !== 'minor';
-    if (needsProof && item.evidenceIds.length === 0)
-      throw new AppError(
-        422,
-        'EVIDENCE_REQUIRED',
-        `"${item.title}" is ${item.severity}; attach a photo or video before asking for approval`,
-      );
-    for (const evidenceId of item.evidenceIds) {
-      if (used.has(evidenceId))
-        throw new AppError(422, 'EVIDENCE_REUSED', 'Evidence can back only one quote item');
-      used.add(evidenceId);
-    }
-    if (item.evidenceIds.length === 0) continue;
-    const linked = await client.query(
-      `UPDATE avc.evidence SET quote_item_id = $1
-       WHERE id = ANY($2::uuid[]) AND job_card_id = $3 AND quote_item_id IS NULL
-         AND ($4::boolean = false OR kind IN ('photo', 'video'))`,
-      [itemIds[index], item.evidenceIds, jobId, needsProof],
-    );
-    if (linked.rowCount !== item.evidenceIds.length)
-      throw new AppError(
-        422,
-        'EVIDENCE_INVALID',
-        'Evidence must belong to this job, be unused, and be a photo or video for yellow/red items',
-      );
-  }
-}
-
-async function createQuote(
-  client: PoolClient,
-  job: LockedJob,
-  staffId: string,
-  kind: 'initial' | 'addendum',
-  items: QuoteInput['items'],
-): Promise<{ quoteId: string; version: number; totalAed: number }> {
-  const open = await client.query(
-    "SELECT 1 FROM avc.quotes WHERE job_card_id = $1 AND status = 'sent'",
-    [job.id],
-  );
-  if (open.rowCount)
-    throw new AppError(409, 'QUOTE_OPEN', 'A quote is already waiting for the customer');
-  const next = await client.query<{ version: number }>(
-    'SELECT COALESCE(MAX(version), 0) + 1 AS version FROM avc.quotes WHERE job_card_id = $1',
-    [job.id],
-  );
-  const version = next.rows[0]!.version;
-  const quote = await client.query<{ id: string }>(
-    `INSERT INTO avc.quotes(job_card_id, version, kind, status, sent_by_staff_id)
-     VALUES ($1,$2,$3,'sent',$4) RETURNING id`,
-    [job.id, version, kind, staffId],
-  );
-  const quoteId = quote.rows[0]!.id;
-  const itemIds: string[] = [];
-  for (const [index, item] of items.entries()) {
-    const row = await client.query<{ id: string }>(
-      `INSERT INTO avc.quote_items(quote_id, position, title, detail, severity, price_aed)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [quoteId, index + 1, item.title, item.detail, item.severity, item.priceAed],
-    );
-    itemIds.push(row.rows[0]!.id);
-  }
-  await attachEvidence(client, job.id, itemIds, items);
-  const totalAed = items.reduce((sum, i) => sum + Math.round(i.priceAed * 100), 0) / 100;
-  return { quoteId, version, totalAed };
-}
 
 export function registerQuoteRoutes(app: FastifyInstance, db: Pool): void {
   app.post(
@@ -156,7 +82,8 @@ export function registerQuoteRoutes(app: FastifyInstance, db: Pool): void {
     },
   );
 
-  // Publish the first quote after inspection. Moves the job to `quote` and returns the customer's link.
+  // The advisor prices what the technician found and posts it. Only then does the customer see the
+  // findings and the prices. The same call prices a mid-repair finding (job past `approved`).
   app.post(
     '/api/jobs/:id/quotes',
     { preHandler: app.requirePermission('quotes:publish') },
@@ -167,100 +94,145 @@ export function registerQuoteRoutes(app: FastifyInstance, db: Pool): void {
         const job = await lockJob(client, id);
         assertBranchAccess(request.staff!, job.branchId);
         assertExpectedVersion(job, input.expectedVersion);
-        if (job.stage !== 'inspection')
+        const kind: 'initial' | 'addendum' | null =
+          job.stage === 'pricing'
+            ? 'initial'
+            : ['approved', 'in_bay', 'qc'].includes(job.stage)
+              ? 'addendum'
+              : null;
+        if (!kind)
           throw new AppError(
             422,
             'INVALID_TRANSITION',
-            'A quote can only be published while the job is in inspection',
+            'A quote can only be posted after the technician submits findings',
           );
-        const quote = await createQuote(client, job, request.staff!.id, 'initial', input.items);
-        const link = await issueCustomerLink(client, id, request.staff!.id);
-        const next = await recordEvent(client, job, {
+        const batch = await client.query<{ id: string }>(
+          `SELECT id FROM avc.finding_batches
+           WHERE job_card_id = $1 AND kind = $2 AND status = 'awaiting_pricing'`,
+          [id, kind],
+        );
+        if (!batch.rows[0])
+          throw new AppError(409, 'NOTHING_TO_PRICE', 'There are no findings waiting to be priced');
+        const batchId = batch.rows[0].id;
+        const findings = await client.query<{ id: string; title: string; severity: string }>(
+          'SELECT id, title, severity FROM avc.findings WHERE batch_id = $1',
+          [batchId],
+        );
+        const byId = new Map(findings.rows.map((f) => [f.id, f]));
+        const priced = new Set<string>();
+        for (const item of input.items) {
+          if (!item.findingId) continue;
+          if (!byId.has(item.findingId))
+            throw new AppError(
+              422,
+              'FINDING_UNKNOWN',
+              'A line refers to a finding from another job',
+            );
+          if (priced.has(item.findingId))
+            throw new AppError(422, 'FINDING_DUPLICATED', 'A finding can only be priced once');
+          priced.add(item.findingId);
+        }
+        // The advisor can reword and price, but cannot drop a technician finding silently.
+        const missing = findings.rows.filter((f) => !priced.has(f.id));
+        if (missing.length)
+          throw new AppError(
+            422,
+            'FINDING_UNPRICED',
+            `Every finding needs a price. Missing: ${missing.map((f) => f.title).join(', ')}`,
+          );
+
+        const next = await client.query<{ version: number }>(
+          'SELECT COALESCE(MAX(version), 0) + 1 AS version FROM avc.quotes WHERE job_card_id = $1',
+          [id],
+        );
+        const version = next.rows[0]!.version;
+        const quote = await client.query<{ id: string }>(
+          `INSERT INTO avc.quotes(job_card_id, version, kind, status, sent_by_staff_id, batch_id)
+           VALUES ($1,$2,$3,'sent',$4,$5) RETURNING id`,
+          [id, version, kind, request.staff!.id, batchId],
+        );
+        const quoteId = quote.rows[0]!.id;
+        let totalCents = 0;
+        for (const [index, item] of input.items.entries()) {
+          const finding = item.findingId ? byId.get(item.findingId) : undefined;
+          const row = await client.query<{ id: string }>(
+            `INSERT INTO avc.quote_items(quote_id, position, title, detail, severity, price_aed, finding_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+            [
+              quoteId,
+              index + 1,
+              item.title,
+              item.detail,
+              finding?.severity ?? 'minor',
+              item.priceAed,
+              finding?.id ?? null,
+            ],
+          );
+          totalCents += Math.round(item.priceAed * 100);
+          const itemId = row.rows[0]!.id;
+          if (finding) {
+            await client.query(
+              'UPDATE avc.evidence SET quote_item_id = $1 WHERE finding_id = $2 AND quote_item_id IS NULL',
+              [itemId, finding.id],
+            );
+          } else if (item.evidenceIds.length) {
+            const linked = await client.query(
+              `UPDATE avc.evidence SET quote_item_id = $1
+               WHERE id = ANY($2::uuid[]) AND job_card_id = $3 AND quote_item_id IS NULL
+                 AND finding_id IS NULL AND transfer_id IS NULL`,
+              [itemId, item.evidenceIds, id],
+            );
+            if (linked.rowCount !== item.evidenceIds.length)
+              throw new AppError(
+                422,
+                'EVIDENCE_INVALID',
+                'Evidence must belong to this job and be unused',
+              );
+          }
+        }
+        await client.query(
+          "UPDATE avc.finding_batches SET status = 'priced', priced_at = now() WHERE id = $1",
+          [batchId],
+        );
+        const link =
+          kind === 'initial' ? await issueCustomerLink(client, id, request.staff!.id) : null;
+        const advanced = await recordEvent(client, job, {
           type: 'quote_sent',
           actor: { type: 'staff', staffId: request.staff!.id },
-          toStage: 'quote',
-          details: { quoteId: quote.quoteId, quoteVersion: quote.version, kind: 'initial' },
+          toStage: kind === 'initial' ? 'quote' : undefined,
+          details: { quoteId, quoteVersion: version, kind },
         });
         await emit(client, {
           branchId: job.branchId,
           type: 'quote.sent',
           aggregateType: 'quote',
-          aggregateId: quote.quoteId,
+          aggregateId: quoteId,
           payload: {
             jobId: id,
             jobNumber: job.jobNumber,
-            quoteId: quote.quoteId,
-            version: quote.version,
-            kind: 'initial',
+            quoteId,
+            version,
+            kind,
             itemCount: input.items.length,
-            totalAed: quote.totalAed,
+            totalAed: totalCents / 100,
           },
         });
-        await emit(client, {
-          branchId: job.branchId,
-          type: 'job.stage_changed',
-          aggregateType: 'job',
-          aggregateId: id,
-          payload: { jobId: id, jobNumber: job.jobNumber, from: 'inspection', to: 'quote' },
-        });
-        return { quote, link, version: next.version };
+        if (kind === 'initial')
+          await emit(client, {
+            branchId: job.branchId,
+            type: 'job.stage_changed',
+            aggregateType: 'job',
+            aggregateId: id,
+            payload: { jobId: id, jobNumber: job.jobNumber, from: 'pricing', to: 'quote' },
+          });
+        return { quoteId, version, kind, link, jobVersion: advanced.version };
       });
       return reply.status(201).send({
-        quote: { id: result.quote.quoteId, version: result.quote.version, kind: 'initial' },
-        jobVersion: result.version,
-        customerLink: {
-          token: result.link.token,
-          path: result.link.path,
-          expiresAt: result.link.expiresAt,
-        },
-      });
-    },
-  );
-
-  // A technician finds something new mid-repair. The job keeps its stage, but work on the new item
-  // must wait for the customer's yes or no (an open quote also blocks advancing the job).
-  app.post(
-    '/api/jobs/:id/findings',
-    { preHandler: app.requirePermission('findings:raise') },
-    async (request, reply) => {
-      const { id } = idSchema.parse(request.params);
-      const input = quoteSchema.parse(request.body);
-      const result = await inTransaction(db, async (client) => {
-        const job = await lockJob(client, id);
-        assertBranchAccess(request.staff!, job.branchId);
-        assertExpectedVersion(job, input.expectedVersion);
-        if (!['approved', 'in_bay', 'qc'].includes(job.stage))
-          throw new AppError(
-            422,
-            'INVALID_TRANSITION',
-            'New findings can only be raised once work is approved and before the car is ready',
-          );
-        const quote = await createQuote(client, job, request.staff!.id, 'addendum', input.items);
-        const next = await recordEvent(client, job, {
-          type: 'finding_raised',
-          actor: { type: 'staff', staffId: request.staff!.id },
-          details: { quoteId: quote.quoteId, quoteVersion: quote.version, kind: 'addendum' },
-        });
-        await emit(client, {
-          branchId: job.branchId,
-          type: 'quote.sent',
-          aggregateType: 'quote',
-          aggregateId: quote.quoteId,
-          payload: {
-            jobId: id,
-            jobNumber: job.jobNumber,
-            quoteId: quote.quoteId,
-            version: quote.version,
-            kind: 'addendum',
-            itemCount: input.items.length,
-            totalAed: quote.totalAed,
-          },
-        });
-        return { quote, version: next.version };
-      });
-      return reply.status(201).send({
-        quote: { id: result.quote.quoteId, version: result.quote.version, kind: 'addendum' },
-        jobVersion: result.version,
+        quote: { id: result.quoteId, version: result.version, kind: result.kind },
+        jobVersion: result.jobVersion,
+        customerLink: result.link
+          ? { token: result.link.token, path: result.link.path, expiresAt: result.link.expiresAt }
+          : null,
       });
     },
   );
@@ -280,7 +252,23 @@ export function registerQuoteRoutes(app: FastifyInstance, db: Pool): void {
     },
   );
 
-  // Re-issue the customer's tracking link (it is shown only once). Earlier links stop working.
+  // The professional bill built from the advisor's entries (estimate now, invoice once delivered).
+  app.get(
+    '/api/jobs/:id/bill',
+    { preHandler: app.requirePermission('quotes:read') },
+    async (request) => {
+      const { id } = idSchema.parse(request.params);
+      const job = await db.query<{ branchId: string }>(
+        'SELECT branch_id AS "branchId" FROM avc.job_cards WHERE id = $1',
+        [id],
+      );
+      if (!job.rows[0]) throw new AppError(404, 'JOB_NOT_FOUND', 'Job card was not found');
+      assertBranchAccess(request.staff!, job.rows[0].branchId);
+      return { bill: await buildBill(db, id) };
+    },
+  );
+
+  // Re-issue the per-job tracking link (shown once). Earlier job links stop working.
   app.post(
     '/api/jobs/:id/customer-links',
     { preHandler: app.requirePermission('customer_links:issue') },

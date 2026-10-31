@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { STAGES, type Severity, type StageKey } from '../ui/model';
 import { Stepper, Trail } from '../ui/shared';
+import { Field, messageOf } from './staff/common';
 import { Card, Donut, Icon, Kpi, SeverityBadge, aed, ago, fmtDate } from '../ui/ui';
 import {
   api,
@@ -315,6 +316,16 @@ export function LiveBoard() {
 const STAFF_LABEL: Record<string, (e: ApiJobEvent) => string> = {
   job_created: () => 'Job card created at intake',
   inspection_started: () => 'Inspection started',
+  inspection_submitted: () => 'Inspection submitted by the technician',
+  transfer_started: (e) =>
+    e.details.direction === 'pickup'
+      ? 'Driver left to collect the car'
+      : 'Driver left with the car',
+  transfer_completed: (e) =>
+    e.details.direction === 'pickup'
+      ? 'Car collected by the driver'
+      : 'Car handed back by the driver',
+  revenue_reversed: (e) => `Payment flagged as not received: ${String(e.details.reason ?? '')}`,
   quote_sent: () => 'Quote sent to the customer',
   finding_raised: () => 'New finding raised — work paused on that item',
   customer_link_issued: () => 'Customer tracking link issued',
@@ -373,7 +384,9 @@ export function LiveJob({ id }: { id: string }) {
       </Page>
     );
   const { job, events, quotes } = state.data;
-  const next = NEXT[job.workStage];
+  // A car going back by driver is marked delivered by the driver, not from here.
+  const next =
+    job.workStage === 'ready' && job.returnMethod === 'delivery' ? undefined : NEXT[job.workStage];
   const open = quotes.find((q) => q.status === 'sent');
 
   async function command(path: string, body: unknown, done?: (r: never) => void) {
@@ -520,11 +533,24 @@ export function LiveJob({ id }: { id: string }) {
                 <Icon name="link" size={15} /> New customer link
               </button>
             </div>
+            <div className="actions">
+              <a className="btn ghost" href={`#/bill/${id}`}>
+                <Icon name="list" size={15} /> View bill
+              </a>
+              {job.awaitingPricing && (
+                <a className="btn primary" href={`#/price/${id}`}>
+                  Price the findings
+                </a>
+              )}
+            </div>
             {job.workStage === 'inspection' && (
-              <p className="note">
-                Publishing a quote needs the inspection checklist and photo upload, which are not
-                built yet.
-              </p>
+              <p className="note">Waiting for the technician to submit the inspection.</p>
+            )}
+            {['approved', 'in_bay', 'qc', 'ready'].includes(job.workStage) && (
+              <ReturnLeg jobId={id} onDone={reload} />
+            )}
+            {job.workStage === 'delivered' && (
+              <ReverseRevenue jobId={id} version={job.version} onDone={reload} />
             )}
             {open && job.workStage === 'quote' && (
               <p className="note">Work cannot start until the customer approves the quote.</p>
@@ -578,5 +604,148 @@ export function LiveJob({ id }: { id: string }) {
         </Card>
       </div>
     </Page>
+  );
+}
+
+// The lounge books the driver for the trip home. Cars the customer collects need nothing here.
+function ReturnLeg({ jobId, onDone }: { jobId: string; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [drivers, setDrivers] = useState<{ id: string; displayName: string }[]>([]);
+  const [form, setForm] = useState({ address: '', driver: '', window: '' });
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!open)
+    return (
+      <>
+        {msg && <p className="note">{msg}</p>}
+        <button
+          type="button"
+          className="btn ghost"
+          onClick={() => {
+            setOpen(true);
+            api<{ drivers: { id: string; displayName: string }[] }>('/api/staff/drivers', {
+              staff: true,
+            })
+              .then((r) => setDrivers(r.drivers))
+              .catch(() => setDrivers([]));
+          }}
+        >
+          Book delivery home
+        </button>
+      </>
+    );
+  return (
+    <form
+      className="form subform"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setMsg(null);
+        try {
+          await api(`/api/jobs/${jobId}/transfers`, {
+            method: 'POST',
+            staff: true,
+            body: {
+              direction: 'return',
+              address: form.address,
+              driverStaffId: form.driver || undefined,
+              windowStart: form.window ? new Date(form.window).toISOString() : undefined,
+            },
+          });
+          setMsg('Delivery booked. The driver sees it in their trips.');
+          setOpen(false);
+          onDone();
+        } catch (err) {
+          setMsg(messageOf(err));
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <Field label="Deliver to">
+        <input
+          required
+          value={form.address}
+          onChange={(e) => setForm({ ...form, address: e.target.value })}
+        />
+      </Field>
+      <div className="row">
+        <Field label="Driver">
+          <select
+            value={form.driver}
+            onChange={(e) => setForm({ ...form, driver: e.target.value })}
+          >
+            <option value="">Assign later</option>
+            {drivers.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.displayName}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Time">
+          <input
+            type="datetime-local"
+            value={form.window}
+            onChange={(e) => setForm({ ...form, window: e.target.value })}
+          />
+        </Field>
+      </div>
+      {msg && <p className="note warn">{msg}</p>}
+      <button type="submit" className="btn primary" disabled={busy}>
+        Book delivery
+      </button>
+    </form>
+  );
+}
+
+// Delivery counts as paid. If the lounge finds the money did not arrive, they say so and why.
+function ReverseRevenue({
+  jobId,
+  version,
+  onDone,
+}: {
+  jobId: string;
+  version: number;
+  onDone: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [msg, setMsg] = useState<string | null>(null);
+  if (!open)
+    return (
+      <button type="button" className="btn ghost" onClick={() => setOpen(true)}>
+        Payment not received
+      </button>
+    );
+  return (
+    <form
+      className="form subform"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        try {
+          await api(`/api/jobs/${jobId}/revenue/reverse`, {
+            method: 'POST',
+            staff: true,
+            body: { expectedVersion: version, reason },
+          });
+          setOpen(false);
+          onDone();
+        } catch (err) {
+          setMsg(messageOf(err));
+        }
+      }}
+    >
+      <Field
+        label="Why was it not received?"
+        hint="This removes the amount from revenue and is kept in the job history."
+      >
+        <input required minLength={3} value={reason} onChange={(e) => setReason(e.target.value)} />
+      </Field>
+      {msg && <p className="note warn">{msg}</p>}
+      <button type="submit" className="btn primary">
+        Remove from revenue
+      </button>
+    </form>
   );
 }

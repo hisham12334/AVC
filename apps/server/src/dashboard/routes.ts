@@ -60,6 +60,8 @@ export function registerDashboardRoutes(app: FastifyInstance, db: Pool): void {
         delivered: string;
         approvedMtd: string;
         approvedToday: string;
+        revenueMtd: string;
+        revenueToday: string;
       }>(
         `WITH bounds AS (
            SELECT date_trunc('month', now() AT TIME ZONE 'Asia/Dubai') AT TIME ZONE 'Asia/Dubai' AS month_start,
@@ -76,10 +78,22 @@ export function registerDashboardRoutes(app: FastifyInstance, db: Pool): void {
            (SELECT COALESCE(SUM(i.price_aed), 0) FROM avc.quote_items i
               JOIN avc.quotes q ON q.id = i.quote_id JOIN avc.job_cards j ON j.id = q.job_card_id, bounds
              WHERE i.decision = 'approved' AND i.decided_at >= bounds.day_start
-               AND ($1::uuid IS NULL OR j.branch_id = $1))::text AS "approvedToday"`,
+               AND ($1::uuid IS NULL OR j.branch_id = $1))::text AS "approvedToday",
+           (SELECT COALESCE(SUM(r.amount_aed), 0) FROM avc.revenue_entries r, bounds
+             WHERE r.reversed_at IS NULL AND r.recognised_at >= bounds.month_start
+               AND ($1::uuid IS NULL OR r.branch_id = $1))::text AS "revenueMtd",
+           (SELECT COALESCE(SUM(r.amount_aed), 0) FROM avc.revenue_entries r, bounds
+             WHERE r.reversed_at IS NULL AND r.recognised_at >= bounds.day_start
+               AND ($1::uuid IS NULL OR r.branch_id = $1))::text AS "revenueToday"`,
         [branchId],
       );
 
+      const pricing = await db.query<{ waiting: string; addendum: string }>(
+        `SELECT COUNT(*)::text AS waiting, COUNT(*) FILTER (WHERE b.kind = 'addendum')::text AS addendum
+         FROM avc.finding_batches b JOIN avc.job_cards j ON j.id = b.job_card_id
+         WHERE b.status = 'awaiting_pricing' AND ($1::uuid IS NULL OR j.branch_id = $1)`,
+        [branchId],
+      );
       const byStage = Object.fromEntries(
         STAGES.filter((s) => s !== 'delivered').map((s) => [s, 0]),
       );
@@ -103,10 +117,15 @@ export function registerDashboardRoutes(app: FastifyInstance, db: Pool): void {
         byStage,
         aging,
         awaitingApproval: Number(waiting.rows[0]!.initial),
-        pausedForFinding: Number(waiting.rows[0]!.addendum),
+        // Work is paused from the moment the technician raises a finding until the customer decides.
+        pausedForFinding: Number(waiting.rows[0]!.addendum) + Number(pricing.rows[0]!.addendum),
+        awaitingPricing: Number(pricing.rows[0]!.waiting),
         deliveredMtd: Number(month.rows[0]!.delivered),
         approvedValueMtdAed: Number(month.rows[0]!.approvedMtd),
         approvedValueTodayAed: Number(month.rows[0]!.approvedToday),
+        // Delivered cars count as received (client rule); reversed entries are excluded.
+        revenueMtdAed: Number(month.rows[0]!.revenueMtd),
+        revenueTodayAed: Number(month.rows[0]!.revenueToday),
       };
     },
   );

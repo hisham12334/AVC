@@ -5,8 +5,10 @@ import type { StaffPrincipal } from '../identity/auth.js';
 // Customer-visible stages, in order. The stage is what the customer app shows;
 // `status` is the coarser operational state kept alongside it.
 export const STAGES = [
+  'pickup',
   'intake',
   'inspection',
+  'pricing',
   'quote',
   'approved',
   'in_bay',
@@ -17,8 +19,10 @@ export const STAGES = [
 export type Stage = (typeof STAGES)[number];
 
 export const STATUS_FOR_STAGE: Record<Stage, string> = {
+  pickup: 'pickup_scheduled',
   intake: 'intake_open',
   inspection: 'inspection_pending',
+  pricing: 'pricing_pending',
   quote: 'awaiting_approval',
   approved: 'approved',
   in_bay: 'in_progress',
@@ -43,6 +47,8 @@ export type LockedJob = {
   customerId: string;
   vehicleId: string;
   vehicleLocation: string;
+  arrivalMethod: 'pickup' | 'walk_in';
+  returnMethod: 'delivery' | 'collect';
   stage: Stage;
   status: string;
   version: number;
@@ -51,7 +57,8 @@ export type LockedJob = {
 export async function lockJob(client: PoolClient, id: string): Promise<LockedJob> {
   const result = await client.query<LockedJob>(
     `SELECT id, job_number::text AS "jobNumber", branch_id AS "branchId", customer_id AS "customerId",
-            vehicle_id AS "vehicleId", vehicle_location AS "vehicleLocation", work_stage AS stage, status, version
+            vehicle_id AS "vehicleId", vehicle_location AS "vehicleLocation",
+            arrival_method AS "arrivalMethod", return_method AS "returnMethod", work_stage AS stage, status, version
      FROM avc.job_cards WHERE id = $1 FOR UPDATE`,
     [id],
   );
@@ -103,4 +110,23 @@ export async function recordEvent(
     ],
   );
   return { version, stage, status };
+}
+
+export async function assertActiveDriver(client: PoolClient, staffId: string): Promise<void> {
+  const found = await client.query(
+    "SELECT 1 FROM avc.staff_members WHERE id = $1 AND role = 'driver' AND active",
+    [staffId],
+  );
+  if (!found.rowCount)
+    throw new AppError(422, 'DRIVER_NOT_FOUND', 'Driver does not exist or is inactive');
+}
+
+// A finding waiting for the advisor to price, or a priced quote waiting for the customer.
+export async function hasOpenCustomerStep(client: PoolClient, jobId: string): Promise<boolean> {
+  const open = await client.query(
+    `SELECT 1 FROM avc.quotes WHERE job_card_id = $1 AND status = 'sent'
+     UNION ALL SELECT 1 FROM avc.finding_batches WHERE job_card_id = $1 AND status = 'awaiting_pricing'`,
+    [jobId],
+  );
+  return (open.rowCount ?? 0) > 0;
 }

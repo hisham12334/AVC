@@ -26,3 +26,12 @@ Working assumptions made while building migration 0003, to confirm with the clie
 - A customer link is valid for 30 days and is the only approval credential until question 10 is settled.
 - Approved value is booked work; invoiced revenue waits for Zoho.
 - The integration target is Zoho CRM, not only Zoho Books (question 7).
+
+Client answers received after migration 0003 (now built in migration 0004):
+
+- Customer profile: created at intake from email and mobile; the QR/link opens it directly, and email plus mobile number is the starting login. The client chose to keep the mobile number valid as the password until the customer changes it; hashing and a wrong-password lockout are added underneath.
+- The technician describes findings with proof and never sees prices. The advisor prices each finding from their own catalog (none is built), and only then does the customer see findings and prices. The customer is told "inspection complete, preparing your quote" in between. The advisor's entries become the bill.
+- Parts and stock: not needed yet.
+- Arrival and return are a mix of concierge and walk-in, so both are supported.
+- Payment: the lounge handles it. When the driver (or the lounge, for a collected car) marks the car delivered, the approved amount is recorded as received and counted as revenue. The lounge can reverse it with a reason.
+- Still open: VAT treatment and the company details on the bill; whether a customer approval needs a verified channel (OTP).

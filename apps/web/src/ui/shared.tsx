@@ -3,18 +3,25 @@ import {
   SEVERITY,
   STAGES,
   stageIndex,
+  stagesFor,
   type Decision,
   type StageKey,
   type TrackModel,
   type TrailEvent,
 } from './model';
+import { EvidenceThumb, type Loader } from './evidence';
 import { Icon, SeverityBadge, aed, fmtDate } from './ui';
 
-export function Stepper({ stage }: { stage: StageKey }) {
-  const cur = stageIndex(stage);
+export function Stepper({ stage, arrival }: { stage: StageKey; arrival?: 'pickup' | 'walk_in' }) {
+  const steps = stagesFor(arrival);
+  const cur = steps.findIndex((s) => s.key === stage);
   return (
-    <ol className="stepper" aria-label="Job progress">
-      {STAGES.map((s, i) => (
+    <ol
+      className="stepper"
+      aria-label="Job progress"
+      style={{ gridTemplateColumns: `repeat(${steps.length}, 1fr)` }}
+    >
+      {steps.map((s, i) => (
         <li
           key={s.key}
           className={i < cur ? 'done' : i === cur ? 'now' : ''}
@@ -28,15 +35,18 @@ export function Stepper({ stage }: { stage: StageKey }) {
   );
 }
 
-export function Thumbs({ photos }: { photos: string[] }) {
+export function Thumbs({
+  photos,
+  load,
+}: {
+  photos: { id: string; caption: string }[];
+  load?: Loader;
+}) {
   if (photos.length === 0) return null;
   return (
     <div className="thumbs">
-      {photos.map((p, i) => (
-        <span key={`${p}-${i}`} className="thumb" title={p}>
-          <Icon name="camera" size={14} />
-          <em>{p}</em>
-        </span>
+      {photos.map((p) => (
+        <EvidenceThumb key={p.id} id={p.id} caption={p.caption} load={load} />
       ))}
     </div>
   );
@@ -63,7 +73,9 @@ export function Trail({ events }: { events: TrailEvent[] }) {
                 </span>
               )}
             </div>
-            {e.photos && <Thumbs photos={e.photos} />}
+            {e.photos && (
+              <Thumbs photos={e.photos.map((caption, i) => ({ id: `${e.id}-${i}`, caption }))} />
+            )}
           </div>
         </li>
       ))}
@@ -78,14 +90,22 @@ export function TrackView({
   model,
   onSubmit,
   state = { busy: false },
+  loadEvidence,
+  billHref,
 }: {
   model: TrackModel;
+  loadEvidence?: Loader;
+  billHref?: string;
   onSubmit: (choices: Record<string, Decision>) => void | boolean | Promise<void | boolean>;
   state?: SubmitState;
 }) {
   const [draft, setDraft] = useState<Record<string, Decision>>({});
+  const steps = stagesFor(model.arrivalMethod ?? 'walk_in');
   const stage = STAGES[stageIndex(model.stage)]!;
-  const cur = stageIndex(model.stage);
+  const cur = Math.max(
+    0,
+    steps.findIndex((s) => s.key === model.stage),
+  );
   const open = model.openQuote;
   const toDecide = open?.items ?? [];
   const isAddendum = open?.kind === 'addendum';
@@ -119,19 +139,40 @@ export function TrackView({
           className="t-progress"
           role="progressbar"
           aria-valuemin={1}
-          aria-valuemax={STAGES.length}
+          aria-valuemax={steps.length}
           aria-valuenow={cur + 1}
         >
-          {STAGES.map((s, i) => (
+          {steps.map((s, i) => (
             <span key={s.key} className={i <= cur ? 'on' : ''} />
           ))}
         </div>
         <p className="t-step">
-          Step {cur + 1} of {STAGES.length} · {stage.label}
+          Step {cur + 1} of {steps.length} · {stage.label}
         </p>
       </header>
 
       <main className="t-body">
+        {model.transfer && (
+          <section className="t-card" aria-label="Driver">
+            <h2>{model.transfer.direction === 'pickup' ? 'Your pickup' : 'Your delivery'}</h2>
+            <p className="muted">
+              {model.transfer.status === 'en_route'
+                ? `${model.transfer.driverName ?? 'Our driver'} is on the way.`
+                : model.transfer.driverName
+                  ? `${model.transfer.driverName} is assigned and will set off at the agreed time.`
+                  : 'A driver will be assigned shortly.'}
+            </p>
+          </section>
+        )}
+        {model.pendingFinding && (
+          <section className="t-card t-decide" aria-label="New finding">
+            <h2>A new finding is being priced</h2>
+            <p className="muted">
+              Our technician spotted something new. We have paused work on it, and your advisor is
+              preparing the price. You will be asked to approve or reject it before we do anything.
+            </p>
+          </section>
+        )}
         {open && (
           <section className="t-card t-decide" aria-label="Your decision">
             <div className="t-card-head">
@@ -157,7 +198,7 @@ export function TrackView({
                     <h3>{i.title}</h3>
                     {i.detail && <p>{i.detail}</p>}
                     <p className="muted small">{SEVERITY[i.severity].hint}</p>
-                    <Thumbs photos={i.evidence} />
+                    <Thumbs photos={i.evidence} load={loadEvidence} />
                     <div className="seg-btns" role="group" aria-label={`Decision for ${i.title}`}>
                       <button
                         type="button"
@@ -212,7 +253,7 @@ export function TrackView({
         <section className="t-card" aria-label="Journey">
           <h2>Your car&rsquo;s journey</h2>
           <ol className="journey">
-            {STAGES.map((s, i) => (
+            {steps.map((s, i) => (
               <li key={s.key} className={i < cur ? 'done' : i === cur ? 'now' : ''}>
                 <span className="j-dot">{i < cur ? <Icon name="check" size={12} /> : ''}</span>
                 <div>
@@ -223,6 +264,17 @@ export function TrackView({
             ))}
           </ol>
         </section>
+
+        {billHref && (
+          <a className="t-card bill-link" href={billHref}>
+            <Icon name="list" size={18} />
+            <span>
+              <strong>View your bill</strong>
+              <small className="muted">Itemised, with photos and what happens next</small>
+            </span>
+            <Icon name="arrow" size={16} />
+          </a>
+        )}
 
         {model.settled.length > 0 && (
           <section className="t-card" aria-label="Approved work">

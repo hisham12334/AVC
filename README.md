@@ -35,3 +35,15 @@ The PWA provides responsive board/detail views with loading, empty and error sta
 - `App Requirements`: supplied client source documents, kept locally and not committed (the repo is public).
 
 There are no production credentials or live customer records in this repository. OIDC provider, advisor role split and intake custody details require AVC decisions. Zoho Books, SMS/WhatsApp, object storage and payment gateway remain out of scope.
+
+## Screens
+
+One web app, five kinds of user. Each signs in and sees only their own screens:
+
+- **Advisor / lounge** (`lounge_manager`): new intake with the customer QR, quotes to price, job board, overview.
+- **Technician**: inspection queue and photo-first capture. Never sees prices.
+- **Driver**: assigned pickups and deliveries, with photos and a signature.
+- **Customer**: scans the QR (`/p/<token>`) or signs in at `/portal` with email and mobile number; sees their cars, approves or rejects each line, opens the bill, and changes their password under Users.
+- **Admin / workshop manager / finance**: overview and job board.
+
+Uploaded photos are kept in `UPLOAD_DIR` (default `apps/server/uploads`, not committed) until object storage is chosen.

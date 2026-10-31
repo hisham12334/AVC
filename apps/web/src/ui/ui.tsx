@@ -44,8 +44,11 @@ export function Icon({ name, size = 18 }: { name: keyof typeof PATHS | string; s
   );
 }
 
-export const aed = (n: number, decimals = 0): string =>
-  `AED ${n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+// Whole amounts show without decimals; anything with fils always shows both digits, never rounded.
+export const aed = (n: number, decimals?: number): string => {
+  const places = decimals ?? (Number.isInteger(n) ? 0 : 2);
+  return `AED ${n.toLocaleString('en-US', { minimumFractionDigits: places, maximumFractionDigits: places })}`;
+};
 
 export const fmtDate = (ms: number): string =>
   new Date(ms).toLocaleString('en-GB', {

@@ -1,7 +1,18 @@
 import { useState } from 'react';
 import type { Decision, TrackItem, TrackModel } from '../ui/model';
 import { TrackView } from '../ui/shared';
-import { api, ApiError, useApi, type ApiQuote, type ApiQuoteItem, type ApiTrack } from './api';
+import {
+  api,
+  ApiError,
+  fileUrl,
+  useApi,
+  type ApiBill,
+  type ApiQuote,
+  type ApiQuoteItem,
+  type ApiTrack,
+  type Auth,
+} from './api';
+import { BillView } from '../ui/BillView';
 
 const asItem = (i: ApiQuoteItem): TrackItem => ({
   id: i.id,
@@ -10,7 +21,7 @@ const asItem = (i: ApiQuoteItem): TrackItem => ({
   severity: i.severity,
   priceAed: i.priceAed,
   decision: i.decision,
-  evidence: i.evidence.map((e) => e.caption || e.kind),
+  evidence: i.evidence.map((e) => ({ id: e.id, caption: e.caption || e.kind })),
 });
 
 function toModel(t: ApiTrack): TrackModel {
@@ -20,6 +31,10 @@ function toModel(t: ApiTrack): TrackModel {
     plate: t.job.licensePlate ?? '',
     stage: t.job.stage,
     workPaused: t.workPaused,
+    advisorName: t.job.advisorName,
+    arrivalMethod: t.job.arrivalMethod,
+    pendingFinding: t.pendingFinding,
+    transfer: t.transfer,
     openQuote: t.openQuote
       ? {
           id: t.openQuote.id,
@@ -43,11 +58,20 @@ function toModel(t: ApiTrack): TrackModel {
   };
 }
 
-// Customer tracker on the real API. The link token in the URL is the only credential.
-export function LiveTrack({ token }: { token: string }) {
+type Source = {
+  key: string;
+  viewPath: string;
+  decisionsPath: string;
+  filePath: (evidenceId: string) => string;
+  auth: Auth;
+  billHref: string;
+};
+
+// The customer tracker on the real API. Works for a per-job link and for a signed-in portal profile.
+function Tracker({ source }: { source: Source }) {
   const { state, reload } = useApi(
-    () => api<ApiTrack>(`/api/track/${encodeURIComponent(token)}`),
-    token,
+    () => api<ApiTrack>(source.viewPath, { auth: source.auth }),
+    source.key,
     15_000,
   );
   const [submit, setSubmit] = useState<{ busy: boolean; error?: string }>({ busy: false });
@@ -83,19 +107,19 @@ export function LiveTrack({ token }: { token: string }) {
     <TrackView
       model={toModel(state.data)}
       state={submit}
+      billHref={source.billHref}
+      loadEvidence={(id) => fileUrl(source.filePath(id), source.auth)}
       onSubmit={async (choices: Record<string, Decision>) => {
         if (!open || open.items.some((i) => !choices[i.id])) return false;
         setSubmit({ busy: true });
         try {
-          await api(`/api/track/${encodeURIComponent(token)}/decisions`, {
+          await api(source.decisionsPath, {
             method: 'POST',
+            auth: source.auth,
             body: {
               quoteId: open.id,
               quoteVersion: open.version,
-              decisions: open.items.map((i) => ({
-                itemId: i.id,
-                decision: choices[i.id],
-              })),
+              decisions: open.items.map((i) => ({ itemId: i.id, decision: choices[i.id] })),
             },
           });
           setSubmit({ busy: false });
@@ -114,5 +138,59 @@ export function LiveTrack({ token }: { token: string }) {
         }
       }}
     />
+  );
+}
+
+// /track/<token>: one job, no login. The link in the URL is the only credential.
+export function LiveTrack({ token }: { token: string }) {
+  const t = encodeURIComponent(token);
+  return (
+    <Tracker
+      source={{
+        key: token,
+        viewPath: `/api/track/${t}`,
+        decisionsPath: `/api/track/${t}/decisions`,
+        filePath: (id) => `/api/track/${t}/evidence/${id}/file`,
+        auth: 'none',
+        billHref: '#/bill',
+      }}
+    />
+  );
+}
+
+export function PortalJobTracker({ jobId }: { jobId: string }) {
+  return (
+    <Tracker
+      source={{
+        key: jobId,
+        viewPath: `/api/portal/jobs/${jobId}`,
+        decisionsPath: `/api/portal/jobs/${jobId}/decisions`,
+        filePath: (id) => `/api/portal/evidence/${id}/file`,
+        auth: 'customer',
+        billHref: `#/bill/${jobId}`,
+      }}
+    />
+  );
+}
+
+// The customer's bill, from either kind of access.
+export function BillScreen({ path, auth, back }: { path: string; auth: Auth; back: string }) {
+  const { state, reload } = useApi(() => api<{ bill: ApiBill }>(path, { auth }), path);
+  return (
+    <div className="bill-page">
+      <a className="link back no-print" href={back}>
+        ← Back
+      </a>
+      {state.kind === 'loading' && <p className="empty">Loading…</p>}
+      {state.kind === 'error' && (
+        <p className="banner banner-critical" role="alert">
+          {state.error.message}{' '}
+          <button type="button" className="btn" onClick={reload}>
+            Try again
+          </button>
+        </p>
+      )}
+      {state.kind === 'ready' && <BillView bill={state.data.bill} />}
+    </div>
   );
 }

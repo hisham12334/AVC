@@ -7,11 +7,14 @@ import { AppError } from '../errors.js';
 import { emit } from '../integration/outbox.js';
 import {
   ADVANCE_TO,
+  assertActiveDriver,
   assertBranchAccess,
   assertExpectedVersion,
+  hasOpenCustomerStep,
   lockJob,
   recordEvent,
 } from './lifecycle.js';
+import { completeDelivery } from './delivery.js';
 
 const intakeSchema = z
   .object({
@@ -20,8 +23,29 @@ const intakeSchema = z
     branchId: z.uuid().optional(),
     mileageKm: z.number().int().min(0).max(2000000),
     intakeCondition: z.string().trim().min(1).max(5000),
+    // The mix is real: some cars come by concierge pickup, some are walked in. Same for the return.
+    arrivalMethod: z.enum(['pickup', 'walk_in']).default('walk_in'),
+    returnMethod: z.enum(['delivery', 'collect']).default('collect'),
+    leadSource: z
+      .enum(['google', 'meta', 'referral', 'partner', 'walk_in', 'repeat', 'other'])
+      .optional(),
+    pickup: z
+      .object({
+        address: z.string().trim().min(1).max(500),
+        contactPhone: z.string().trim().max(40).optional(),
+        windowStart: z.iso.datetime().optional(),
+        windowEnd: z.iso.datetime().optional(),
+        notes: z.string().trim().max(1000).default(''),
+        driverStaffId: z.uuid().optional(),
+      })
+      .strict()
+      .optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (v) => v.arrivalMethod !== 'pickup' || !!v.pickup,
+    'Pickup details are required for a pickup',
+  );
 const commandSchema = z.object({ expectedVersion: z.number().int().min(1) }).strict();
 const idSchema = z.object({ id: z.uuid() });
 
@@ -43,13 +67,18 @@ export function registerJobRoutes(app: FastifyInstance, db: Pool): void {
             'Vehicle is not linked to this customer',
           );
         const branch = await resolveBranch(client, request.staff!, input.branchId);
+        const startStage = input.arrivalMethod === 'pickup' ? 'pickup' : 'intake';
+        const startStatus = input.arrivalMethod === 'pickup' ? 'pickup_scheduled' : 'intake_open';
         const created = await client.query(
           `INSERT INTO avc.job_cards(customer_id, vehicle_id, branch_id, mileage_km, intake_condition, status,
-              vehicle_location, work_stage, responsible_staff_id, created_by_staff_id, version)
-         VALUES ($1,$2,$3,$4,$5,'intake_open',$6,'intake',$7,$7,1)
+              vehicle_location, work_stage, responsible_staff_id, created_by_staff_id, version,
+              arrival_method, return_method, lead_source)
+         VALUES ($1,$2,$3,$4,$5,$8,$6,$9,$7,$7,1,$10,$11,$12)
          RETURNING id, job_number AS "jobNumber", customer_id AS "customerId", vehicle_id AS "vehicleId",
                    branch_id AS "branchId", mileage_km AS "mileageKm", intake_condition AS "intakeCondition",
                    status, vehicle_location AS "vehicleLocation", work_stage AS "workStage",
+                   arrival_method AS "arrivalMethod", return_method AS "returnMethod",
+                   lead_source AS "leadSource",
                    responsible_staff_id AS "responsibleStaffId", created_by_staff_id AS "createdByStaffId",
                    version, created_at AS "createdAt", updated_at AS "updatedAt"`,
           [
@@ -60,18 +89,47 @@ export function registerJobRoutes(app: FastifyInstance, db: Pool): void {
             input.intakeCondition,
             branch.code,
             request.staff!.id,
+            startStatus,
+            startStage,
+            input.arrivalMethod,
+            input.returnMethod,
+            input.leadSource ?? null,
           ],
         );
         const row = created.rows[0];
         await client.query(
           `INSERT INTO avc.job_events(job_card_id, job_version, event_type, from_status, to_status, actor_staff_id, details)
-         VALUES ($1,1,'job_created',NULL,'intake_open',$2,$3::jsonb)`,
+         VALUES ($1,1,'job_created',NULL,$4,$2,$3::jsonb)`,
           [
             row.id,
             request.staff!.id,
-            JSON.stringify({ mileageKm: input.mileageKm, intakeCondition: input.intakeCondition }),
+            JSON.stringify({
+              mileageKm: input.mileageKm,
+              intakeCondition: input.intakeCondition,
+              arrival: input.arrivalMethod,
+            }),
+            startStatus,
           ],
         );
+        if (input.pickup) {
+          const pickup = input.pickup;
+          if (pickup.driverStaffId) await assertActiveDriver(client, pickup.driverStaffId);
+          await client.query(
+            `INSERT INTO avc.transfers(job_card_id, direction, address, contact_phone, window_start, window_end,
+                notes, driver_staff_id, scheduled_by_staff_id)
+             VALUES ($1,'pickup',$2,$3,$4,$5,$6,$7,$8)`,
+            [
+              row.id,
+              pickup.address,
+              pickup.contactPhone ?? null,
+              pickup.windowStart ?? null,
+              pickup.windowEnd ?? null,
+              pickup.notes,
+              pickup.driverStaffId ?? null,
+              request.staff!.id,
+            ],
+          );
+        }
         await emit(client, {
           branchId: branch.id,
           type: 'job.created',
@@ -158,16 +216,25 @@ export function registerJobRoutes(app: FastifyInstance, db: Pool): void {
               ? 'Work cannot start until the customer approves the quote'
               : 'The job cannot be advanced from its current stage',
           );
-        const open = await client.query(
-          "SELECT 1 FROM avc.quotes WHERE job_card_id = $1 AND status = 'sent'",
-          [id],
-        );
-        if (open.rowCount)
+        if (await hasOpenCustomerStep(client, id))
           throw new AppError(
             409,
             'AWAITING_CUSTOMER_DECISION',
-            'A quote is waiting for the customer; the job cannot move on yet',
+            'A finding or quote is still open; the job cannot move on yet',
           );
+        if (target === 'delivered') {
+          if (current.returnMethod === 'delivery')
+            throw new AppError(
+              422,
+              'DELIVERY_BY_DRIVER',
+              'This car goes back by driver; the driver marks it delivered',
+            );
+          const done = await completeDelivery(client, current, {
+            type: 'staff',
+            staffId: request.staff!.id,
+          });
+          return { id, status: 'delivered', version: done.version, workStage: 'delivered' };
+        }
         const next = await recordEvent(client, current, {
           type: 'stage_advanced',
           actor: { type: 'staff', staffId: request.staff!.id },
@@ -193,7 +260,10 @@ export function registerJobRoutes(app: FastifyInstance, db: Pool): void {
               c.full_name AS "customerName", v.make, v.model, v.license_plate AS "licensePlate",
               s.display_name AS "responsibleStaffName",
               EXISTS (SELECT 1 FROM avc.quotes q WHERE q.job_card_id = j.id AND q.status = 'sent')
-                AS "awaitingCustomer"
+                AS "awaitingCustomer",
+              EXISTS (SELECT 1 FROM avc.finding_batches b WHERE b.job_card_id = j.id AND b.status = 'awaiting_pricing')
+                AS "awaitingPricing",
+              j.arrival_method AS "arrivalMethod", j.return_method AS "returnMethod"
        FROM avc.job_cards j JOIN avc.customers c ON c.id = j.customer_id
        JOIN avc.vehicles v ON v.id = j.vehicle_id
        JOIN avc.staff_members s ON s.id = j.responsible_staff_id
@@ -209,6 +279,9 @@ export function registerJobRoutes(app: FastifyInstance, db: Pool): void {
     const result = await db.query(
       `SELECT j.id, j.job_number AS "jobNumber", j.customer_id AS "customerId", j.vehicle_id AS "vehicleId",
               j.branch_id AS "branchId", j.mileage_km AS "mileageKm", j.intake_condition AS "intakeCondition",
+              j.arrival_method AS "arrivalMethod", j.return_method AS "returnMethod", j.lead_source AS "leadSource",
+              EXISTS (SELECT 1 FROM avc.finding_batches b WHERE b.job_card_id = j.id AND b.status = 'awaiting_pricing')
+                AS "awaitingPricing",
               j.status, j.vehicle_location AS "vehicleLocation", j.work_stage AS "workStage", j.version,
               j.created_at AS "createdAt", j.updated_at AS "updatedAt",
               c.full_name AS "customerName", c.mobile_number AS "customerMobile",

@@ -14,6 +14,8 @@ const schema = z.object({
   DATABASE_URL: z.url().startsWith('postgres://').or(z.url().startsWith('postgresql://')),
   // 0 or unset leaves webhook delivery off; a worker or this timer may run it later.
   WEBHOOK_DISPATCH_INTERVAL_MS: z.coerce.number().int().min(0).optional(),
+  // Where uploaded photos are kept until object storage is chosen. Defaults to ./uploads.
+  UPLOAD_DIR: z.string().min(1).optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 

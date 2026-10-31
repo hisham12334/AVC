@@ -9,6 +9,11 @@ export const EVENT_TYPES = [
   'vehicle.created',
   'job.created',
   'job.stage_changed',
+  'job.delivered',
+  'inspection.completed',
+  'finding.raised',
+  'transfer.completed',
+  'revenue.reversed',
   'quote.sent',
   'quote.decided',
 ] as const;

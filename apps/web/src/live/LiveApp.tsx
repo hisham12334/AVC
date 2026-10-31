@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react';
 import { DEMO_AVAILABLE, readRoute, switchMode } from '../mode';
 import { Icon } from '../ui/ui';
-import { api, staffToken, useApi } from './api';
+import { api, staffToken, useApi, type ApiStaff } from './api';
 import { LiveBoard, LiveJob, LiveOverview } from './LiveAdmin';
+import { BillScreen } from './LiveTrack';
+import { DriverComplete, DriverLegs } from './staff/Driver';
+import { Intake } from './staff/Intake';
+import { InspectionCapture, InspectionQueue } from './staff/Inspection';
+import { PricingEditor, PricingQueue } from './staff/Pricing';
+import { Loading, Problem } from './staff/common';
 
 function useHashRoute(): string[] {
   const [route, setRoute] = useState(readRoute);
@@ -40,7 +46,7 @@ function Gate({ onToken }: { onToken: () => void }) {
               workshop screens cannot open live records for now.
             </p>
             <p className="muted small">
-              Customers are not affected: their tracking links work without any staff login.
+              Customers are not affected: their QR links and profiles work without any staff login.
             </p>
           </>
         )}
@@ -77,20 +83,64 @@ function Gate({ onToken }: { onToken: () => void }) {
   );
 }
 
+type NavItem = { key: string; label: string; icon: string; href: string };
+const OVERVIEW: NavItem = { key: 'overview', label: 'Overview', icon: 'grid', href: '#/' };
+const INTAKE: NavItem = { key: 'intake', label: 'New intake', icon: 'plus', href: '#/intake' };
+const PRICE: NavItem = { key: 'price', label: 'Quotes to price', icon: 'tool', href: '#/price' };
+const INSPECT: NavItem = {
+  key: 'inspect',
+  label: 'Inspections',
+  icon: 'camera',
+  href: '#/inspect',
+};
+const JOBS: NavItem = { key: 'jobs', label: 'Job board', icon: 'list', href: '#/jobs' };
+const LEGS: NavItem = { key: 'legs', label: 'My trips', icon: 'car', href: '#/legs' };
+
+// Each person sees the screens for their own job and nothing else.
+const NAV: Record<string, { items: NavItem[]; home: string }> = {
+  lounge_manager: { items: [OVERVIEW, INTAKE, PRICE, JOBS], home: 'overview' },
+  workshop_manager: { items: [OVERVIEW, INTAKE, INSPECT, JOBS], home: 'overview' },
+  technician: { items: [INSPECT], home: 'inspect' },
+  driver: { items: [LEGS], home: 'legs' },
+  admin: { items: [OVERVIEW, JOBS], home: 'overview' },
+  finance: { items: [OVERVIEW], home: 'overview' },
+};
+
 export default function LiveApp() {
   const [signedIn, setSignedIn] = useState(() => !!staffToken.get());
-  const [section, id] = useHashRoute();
   if (!signedIn) return <Gate onToken={() => setSignedIn(true)} />;
+  return <Signed onSignOut={() => setSignedIn(false)} />;
+}
 
-  const nav = [
-    { key: 'overview', label: 'Overview', icon: 'grid', href: '#/' },
-    { key: 'jobs', label: 'Job board', icon: 'list', href: '#/jobs' },
-  ];
-  const active = section === 'jobs' ? 'jobs' : 'overview';
+function Signed({ onSignOut }: { onSignOut: () => void }) {
+  const me = useApi(() => api<{ staff: ApiStaff }>('/api/staff/me', { staff: true }), 'me');
+  const [section, id] = useHashRoute();
   const signOut = () => {
     staffToken.set(null);
-    setSignedIn(false);
+    onSignOut();
   };
+  if (me.state.kind === 'loading') return <Loading />;
+  if (me.state.kind === 'error')
+    return (
+      <div className="page">
+        <Problem error={me.state.error} retry={me.reload} />
+      </div>
+    );
+  const staff = me.state.data.staff;
+  const nav = NAV[staff.role] ?? NAV.finance!;
+  const current = section || nav.home;
+  const active = current === 'bill' ? 'jobs' : current;
+
+  let page;
+  if (current === 'intake') page = <Intake />;
+  else if (current === 'inspect') page = id ? <InspectionCapture id={id} /> : <InspectionQueue />;
+  else if (current === 'price') page = id ? <PricingEditor id={id} /> : <PricingQueue />;
+  else if (current === 'legs') page = id ? <DriverComplete id={id} /> : <DriverLegs />;
+  else if (current === 'jobs') page = id ? <LiveJob id={id} /> : <LiveBoard />;
+  else if (current === 'bill' && id)
+    page = <BillScreen path={`/api/jobs/${id}/bill`} auth="staff" back={`#/jobs/${id}`} />;
+  else page = <LiveOverview />;
+
   return (
     <div className="shell">
       <aside className="side">
@@ -98,11 +148,11 @@ export default function LiveApp() {
           <span className="brand-mark">AVC</span>
           <div>
             <strong>AVC Cloud</strong>
-            <small>Workshop platform</small>
+            <small>{staff.displayName}</small>
           </div>
         </div>
         <nav aria-label="Main">
-          {nav.map((n) => (
+          {nav.items.map((n) => (
             <a key={n.key} href={n.href} className={active === n.key ? 'on' : ''}>
               <Icon name={n.icon} size={18} />
               {n.label}
@@ -121,8 +171,8 @@ export default function LiveApp() {
         </div>
       </aside>
       <div className="main">
-        <div className="mobile-nav">
-          {nav.map((n) => (
+        <div className="mobile-nav no-print">
+          {nav.items.map((n) => (
             <a key={n.key} href={n.href} className={active === n.key ? 'on' : ''}>
               {n.label}
             </a>
@@ -131,13 +181,7 @@ export default function LiveApp() {
             Sign out
           </a>
         </div>
-        {section === 'jobs' && id ? (
-          <LiveJob id={id} />
-        ) : section === 'jobs' ? (
-          <LiveBoard />
-        ) : (
-          <LiveOverview />
-        )}
+        {page}
       </div>
     </div>
   );

@@ -4,12 +4,16 @@ import { z } from 'zod';
 import { inTransaction } from '../db.js';
 import { AppError } from '../errors.js';
 import { emit } from '../integration/outbox.js';
+import { digitsOnly, hashPassword } from '../portal/passwords.js';
+import { issueCustomerToken, revokeProfileLinks } from '../portal/tokens.js';
 
 const searchSchema = z.object({ query: z.string().trim().min(2).max(100) });
 const customerSchema = z
   .object({
     fullName: z.string().trim().min(1).max(200),
     mobileNumber: z.string().trim().min(6).max(40),
+    // The email is the customer's portal username, so it is required.
+    email: z.string().trim().toLowerCase().max(200).pipe(z.email()),
   })
   .strict();
 const vehicleSchema = z
@@ -46,8 +50,9 @@ export function registerCrmRoutes(app: FastifyInstance, db: Pool): void {
       const { query } = searchSchema.parse(request.query);
       const digits = query.replace(/\D/g, '');
       const result = await db.query(
-        `SELECT id, full_name AS "fullName", mobile_number AS "mobileNumber", created_at AS "createdAt"
-       FROM avc.customers WHERE full_name ILIKE $1 ESCAPE '\\' OR ($2 <> '' AND mobile_search LIKE $3)
+        `SELECT id, full_name AS "fullName", mobile_number AS "mobileNumber", email, created_at AS "createdAt"
+       FROM avc.customers WHERE full_name ILIKE $1 ESCAPE '\\' OR email ILIKE $1 ESCAPE '\\'
+          OR ($2 <> '' AND mobile_search LIKE $3)
        ORDER BY created_at DESC LIMIT 20`,
         [like(query), digits, like(digits)],
       );
@@ -75,22 +80,93 @@ export function registerCrmRoutes(app: FastifyInstance, db: Pool): void {
             'POSSIBLE_DUPLICATE_CUSTOMER',
             'A matching customer exists; search before creating another',
           );
+        const sameEmail = await client.query(
+          'SELECT 1 FROM avc.customers WHERE lower(email) = $1',
+          [input.email],
+        );
+        if (sameEmail.rowCount)
+          throw new AppError(
+            409,
+            'POSSIBLE_DUPLICATE_CUSTOMER',
+            'A customer with this email already exists; search before creating another',
+          );
         const created = await client.query(
-          `INSERT INTO avc.customers(full_name, mobile_number, mobile_search, created_by_staff_id)
-         VALUES ($1, $2, $3, $4) RETURNING id, full_name AS "fullName", mobile_number AS "mobileNumber", created_at AS "createdAt"`,
-          [input.fullName, input.mobileNumber, normalized, request.staff!.id],
+          `INSERT INTO avc.customers(full_name, mobile_number, mobile_search, email, created_by_staff_id)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, full_name AS "fullName", mobile_number AS "mobileNumber", email, created_at AS "createdAt"`,
+          [input.fullName, input.mobileNumber, normalized, input.email, request.staff!.id],
         );
         const row = created.rows[0];
+        // Client decision: the starting password is the mobile number. Only its hash is stored.
+        await client.query(
+          'INSERT INTO avc.customer_accounts(customer_id, password_hash) VALUES ($1, $2)',
+          [row.id, await hashPassword(digitsOnly(input.mobileNumber))],
+        );
+        const profileLink = await issueCustomerToken(
+          client,
+          row.id,
+          'profile_link',
+          request.staff!.id,
+        );
         await emit(client, {
           branchId: null,
           type: 'customer.created',
           aggregateType: 'customer',
           aggregateId: row.id,
-          payload: { customerId: row.id, fullName: row.fullName, mobileNumber: row.mobileNumber },
+          payload: {
+            customerId: row.id,
+            fullName: row.fullName,
+            mobileNumber: row.mobileNumber,
+            email: row.email,
+          },
         });
-        return row;
+        return { row, profileLink };
       });
-      return reply.status(201).send({ customer });
+      // The profile link (QR) is shown once; staff can re-issue it later.
+      return reply.status(201).send({
+        customer: customer.row,
+        profileLink: {
+          token: customer.profileLink.token,
+          path: customer.profileLink.path,
+          expiresAt: customer.profileLink.expiresAt,
+        },
+      });
+    },
+  );
+
+  // Replace the customer's QR/link (for example if it was lost). The previous one stops working.
+  app.post(
+    '/api/customers/:id/profile-link',
+    { preHandler: app.requirePermission('customer_links:issue') },
+    async (request, reply) => {
+      const { id } = z.object({ id: z.uuid() }).parse(request.params);
+      const link = await inTransaction(db, async (client) => {
+        const found = await client.query(
+          'SELECT 1 FROM avc.customer_accounts WHERE customer_id = $1',
+          [id],
+        );
+        if (!found.rowCount)
+          throw new AppError(404, 'CUSTOMER_NOT_FOUND', 'Customer has no portal profile');
+        await revokeProfileLinks(client, id);
+        return issueCustomerToken(client, id, 'profile_link', request.staff!.id);
+      });
+      return reply
+        .status(201)
+        .send({ profileLink: { token: link.token, path: link.path, expiresAt: link.expiresAt } });
+    },
+  );
+
+  app.get(
+    '/api/customers/:id/vehicles',
+    { preHandler: app.requirePermission('vehicles:read') },
+    async (request) => {
+      const { id } = z.object({ id: z.uuid() }).parse(request.params);
+      const result = await db.query(
+        `SELECT id, customer_id AS "customerId", vin, license_plate AS "licensePlate", make, model,
+                model_year AS "modelYear", color FROM avc.vehicles WHERE customer_id = $1 ORDER BY created_at`,
+        [id],
+      );
+      return { vehicles: result.rows };
     },
   );
 

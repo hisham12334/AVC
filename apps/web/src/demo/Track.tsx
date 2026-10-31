@@ -11,7 +11,7 @@ const asItem = (i: QuoteItem): TrackItem => ({
   severity: i.severity,
   priceAed: i.price,
   decision: i.decision,
-  evidence: i.photos,
+  evidence: i.photos.map((caption, n) => ({ id: `${i.id}-p${n}`, caption })),
 });
 
 // Customer tracker backed by the in-browser sample store.

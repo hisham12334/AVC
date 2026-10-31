@@ -36,7 +36,11 @@ async function customer(name = 'Test Owner', mobile = '+971 50 111 2222') {
     method: 'POST',
     url: '/api/customers',
     headers: auth(),
-    payload: { fullName: name, mobileNumber: mobile },
+    payload: {
+      fullName: name,
+      mobileNumber: mobile,
+      email: `${name.toLowerCase().replace(/\W+/g, '.')}@example.test`,
+    },
   });
 }
 async function vehicle(customerId: string, vin = 'TESTVIN1234567890') {
