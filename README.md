@@ -1,6 +1,6 @@
 # AVC Cloud WMS
 
-Phase 0 foundation plus Milestone 1A intake and auditable job cards for a two-location automotive workshop system. The API implements protected customer/vehicle lookup and creation, intake job creation, a guarded start-inspection command, and read-only job board/detail. Staff OIDC provider selection and browser sign-in are still blocked; the deployed verifier rejects all bearer tokens until configured.
+Phase 0 foundation plus Milestone 1A intake and auditable job cards for a two-location automotive workshop system. The API implements protected customer/vehicle lookup and creation, intake job creation, a guarded start-inspection command, and read-only job board/detail. Staff sign in with email and password (session tokens, lockout after repeated failures). An OIDC provider can replace this later through the `TokenVerifier` interface once AVC picks one.
 
 ## Requirements
 
@@ -18,7 +18,7 @@ Phase 0 foundation plus Milestone 1A intake and auditable job cards for a two-lo
 
 Open `http://127.0.0.1:3000/` for the shell. `GET /health/live` checks the process; `GET /health/ready` checks PostgreSQL and returns 503 when it cannot connect. Development API watch mode: `pnpm dev`. The served web shell is the latest built `apps/web/dist`; rebuild the web package after edits.
 
-The PWA provides responsive board/detail views with loading, empty and error states. It does not cache customer/API responses. Without a selected and configured identity provider, it shows an access error rather than live records. The test verifier exists only through dependency injection in automated tests; there is no development backdoor or seeded staff login.
+The PWA provides responsive board/detail views with loading, empty and error states. It does not cache customer/API responses. Without a selected and configured identity provider, it shows an access error rather than live records. There is no seeded staff login. Create the first super admin with `AVC_SUPER_ADMIN_PASSWORD=<10+ chars> pnpm create:super-admin <email> "<name>"` after `pnpm migrate:up` (0005 adds staff login). It must change that password at first sign-in. The super admin then adds staff, assigns roles and branches, resets passwords and switches accounts off under **Team**; no other role can.
 
 ## Checks
 
@@ -46,4 +46,4 @@ One web app, five kinds of user. Each signs in and sees only their own screens:
 - **Customer**: scans the QR (`/p/<token>`) or signs in at `/portal` with email and mobile number; sees their cars, approves or rejects each line, opens the bill, and changes their password under Users.
 - **Admin / workshop manager / finance**: overview and job board.
 
-Uploaded photos are kept in `UPLOAD_DIR` (default `apps/server/uploads`, not committed) until object storage is chosen.
+Uploaded photos are kept on the server's disk in `UPLOAD_DIR` (default `apps/server/uploads`, not committed), not in cloud storage, until object storage is chosen. Back that directory up with the database.

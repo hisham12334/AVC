@@ -4,7 +4,9 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import type { Pool } from 'pg';
 import type { Config } from './config.js';
-import { registerIdentity, unconfiguredVerifier, type TokenVerifier } from './identity/auth.js';
+import { registerIdentity, type TokenVerifier } from './identity/auth.js';
+import { registerStaffAccountRoutes } from './identity/accounts.js';
+import { sessionVerifier } from './identity/sessions.js';
 import { registerBranchRoutes } from './branches/routes.js';
 import { registerCrmRoutes } from './crm/routes.js';
 import { registerDashboardRoutes } from './dashboard/routes.js';
@@ -21,7 +23,7 @@ import { toPublicError } from './errors.js';
 export function createApp(
   config: Config,
   db: Pool,
-  verifier: TokenVerifier = unconfiguredVerifier,
+  verifier: TokenVerifier = sessionVerifier(db),
 ): FastifyInstance {
   const app = Fastify({
     logger: {
@@ -55,6 +57,7 @@ export function createApp(
   });
 
   registerIdentity(app, db, verifier);
+  registerStaffAccountRoutes(app, db);
   registerCrmRoutes(app, db);
   registerJobRoutes(app, db);
   registerBranchRoutes(app, db);

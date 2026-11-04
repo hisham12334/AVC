@@ -16,7 +16,8 @@
     "test": "vitest run",
     "migrate:up": "pnpm --filter @avc/server migrate:up",
     "migrate:status": "pnpm --filter @avc/server migrate:status",
-    "migrate:validate": "pnpm --filter @avc/server migrate:validate"
+    "migrate:validate": "pnpm --filter @avc/server migrate:validate",
+    "create:super-admin": "pnpm --filter @avc/server create:super-admin"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

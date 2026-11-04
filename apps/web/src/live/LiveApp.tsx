@@ -8,7 +8,9 @@ import { DriverComplete, DriverLegs } from './staff/Driver';
 import { Intake } from './staff/Intake';
 import { InspectionCapture, InspectionQueue } from './staff/Inspection';
 import { PricingEditor, PricingQueue } from './staff/Pricing';
-import { Loading, Problem } from './staff/common';
+import { ChangePassword } from './staff/Account';
+import { Team } from './staff/Team';
+import { Loading, Problem, messageOf } from './staff/common';
 
 function useHashRoute(): string[] {
   const [route, setRoute] = useState(readRoute);
@@ -23,56 +25,67 @@ function useHashRoute(): string[] {
   return route;
 }
 
-// Placeholder sign-in. Real staff sign-in needs the client's identity provider (open question 10);
-// until then a verified bearer token can be pasted here, and the API still checks it.
-function Gate({ onToken }: { onToken: () => void }) {
-  const { state } = useApi(() => api<{ configured: boolean }>('/api/auth/status'), 'auth');
-  const [value, setValue] = useState('');
+function Gate({ onSignedIn }: { onSignedIn: () => void }) {
+  const [form, setForm] = useState({ email: '', password: '' });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   return (
     <div className="gate">
       <div className="card gate-card">
         <span className="brand-mark">AVC</span>
         <h1>Staff sign-in</h1>
-        {state.kind === 'loading' && <p className="muted">Checking sign-in…</p>}
-        {state.kind === 'error' && (
-          <p className="banner banner-critical" role="alert">
-            {state.error.message}
-          </p>
-        )}
-        {state.kind === 'ready' && !state.data.configured && (
-          <>
-            <p className="muted">
-              Staff sign-in is not set up yet. It needs AVC to choose an identity provider, so the
-              workshop screens cannot open live records for now.
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            setError(null);
+            try {
+              const r = await api<{ token: string }>('/api/auth/login', {
+                method: 'POST',
+                body: form,
+              });
+              staffToken.set(r.token);
+              onSignedIn();
+            } catch (err) {
+              setError(messageOf(err));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <label className="field">
+            <span>Email</span>
+            <input
+              type="email"
+              required
+              autoComplete="username"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Password</span>
+            <input
+              type="password"
+              required
+              autoComplete="current-password"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+            />
+          </label>
+          {error && (
+            <p className="banner banner-critical" role="alert">
+              {error}
             </p>
-            <p className="muted small">
-              Customers are not affected: their QR links and profiles work without any staff login.
-            </p>
-          </>
-        )}
-        {state.kind === 'ready' && state.data.configured && (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!value.trim()) return;
-              staffToken.set(value.trim());
-              onToken();
-            }}
-          >
-            <label className="field">
-              <span>Access token</span>
-              <input
-                type="password"
-                autoComplete="off"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-              />
-            </label>
-            <button type="submit" className="btn primary lg" disabled={!value.trim()}>
-              Continue
-            </button>
-          </form>
-        )}
+          )}
+          <button type="submit" className="btn primary lg" disabled={busy}>
+            {busy ? 'Signing in�' : 'Sign in'}
+          </button>
+        </form>
+        <p className="muted small">
+          Accounts are created by your super admin. Customers do not need a staff login: their QR
+          links and profiles work on their own.
+        </p>
         {DEMO_AVAILABLE && (
           <button type="button" className="btn ghost" onClick={() => switchMode('demo')}>
             Open the sample-data demo
@@ -94,6 +107,8 @@ const INSPECT: NavItem = {
   href: '#/inspect',
 };
 const JOBS: NavItem = { key: 'jobs', label: 'Job board', icon: 'list', href: '#/jobs' };
+const TEAM: NavItem = { key: 'team', label: 'Team', icon: 'user', href: '#/team' };
+const ACCOUNT: NavItem = { key: 'account', label: 'Account', icon: 'lock', href: '#/account' };
 const LEGS: NavItem = { key: 'legs', label: 'My trips', icon: 'car', href: '#/legs' };
 
 // Each person sees the screens for their own job and nothing else.
@@ -104,11 +119,12 @@ const NAV: Record<string, { items: NavItem[]; home: string }> = {
   driver: { items: [LEGS], home: 'legs' },
   admin: { items: [OVERVIEW, JOBS], home: 'overview' },
   finance: { items: [OVERVIEW], home: 'overview' },
+  super_admin: { items: [OVERVIEW, JOBS, TEAM], home: 'overview' },
 };
 
 export default function LiveApp() {
   const [signedIn, setSignedIn] = useState(() => !!staffToken.get());
-  if (!signedIn) return <Gate onToken={() => setSignedIn(true)} />;
+  if (!signedIn) return <Gate onSignedIn={() => setSignedIn(true)} />;
   return <Signed onSignOut={() => setSignedIn(false)} />;
 }
 
@@ -116,6 +132,8 @@ function Signed({ onSignOut }: { onSignOut: () => void }) {
   const me = useApi(() => api<{ staff: ApiStaff }>('/api/staff/me', { staff: true }), 'me');
   const [section, id] = useHashRoute();
   const signOut = () => {
+    // Revoke the session on the server too; the screen signs out even if that call fails.
+    void api('/api/auth/logout', { method: 'POST', staff: true }).catch(() => undefined);
     staffToken.set(null);
     onSignOut();
   };
@@ -127,12 +145,16 @@ function Signed({ onSignOut }: { onSignOut: () => void }) {
       </div>
     );
   const staff = me.state.data.staff;
-  const nav = NAV[staff.role] ?? NAV.finance!;
+  if (staff.mustChangePassword) return <ChangePassword forced onDone={me.reload} />;
+  const base = NAV[staff.role] ?? NAV.finance!;
+  const nav = { ...base, items: [...base.items, ACCOUNT] };
   const current = section || nav.home;
   const active = current === 'bill' ? 'jobs' : current;
 
   let page;
-  if (current === 'intake') page = <Intake />;
+  if (current === 'account') page = <ChangePassword onDone={me.reload} />;
+  else if (current === 'team' && staff.role === 'super_admin') page = <Team selfId={staff.id} />;
+  else if (current === 'intake') page = <Intake />;
   else if (current === 'inspect') page = id ? <InspectionCapture id={id} /> : <InspectionQueue />;
   else if (current === 'price') page = id ? <PricingEditor id={id} /> : <PricingQueue />;
   else if (current === 'legs') page = id ? <DriverComplete id={id} /> : <DriverLegs />;

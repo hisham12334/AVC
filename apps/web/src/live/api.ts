@@ -11,8 +11,8 @@ export class ApiError extends Error {
   }
 }
 
-// Staff sign-in is not configured yet (OIDC provider is an open client decision). Until it is, a
-// verified bearer token can be pasted in; it is kept for this browser tab only.
+// Staff sign in with email and password; the server returns a session token kept for this tab only.
+// An OIDC provider can replace this later without touching the screens.
 const TOKEN_KEY = 'avc.staffToken';
 export const staffToken = {
   get(): string | null {
@@ -81,7 +81,7 @@ async function failure(response: Response): Promise<ApiError> {
 
 export async function api<T>(
   path: string,
-  options: { method?: 'GET' | 'POST'; body?: unknown; staff?: boolean; auth?: Auth } = {},
+  options: { method?: 'GET' | 'POST' | 'PATCH'; body?: unknown; staff?: boolean; auth?: Auth } = {},
 ): Promise<T> {
   const auth: Auth = options.auth ?? (options.staff ? 'staff' : 'none');
   const headers: Record<string, string> = { ...authHeader(auth) };
@@ -319,7 +319,25 @@ export type ApiBill = {
   instructions: string[];
   terms: string[];
 };
-export type ApiStaff = { id: string; displayName: string; role: string; branchId: string | null };
+export type ApiStaff = {
+  id: string;
+  displayName: string;
+  role: string;
+  branchId: string | null;
+  email: string | null;
+  mustChangePassword: boolean;
+};
+export type ApiStaffMember = {
+  id: string;
+  displayName: string;
+  email: string | null;
+  role: string;
+  branchId: string | null;
+  active: boolean;
+  mustChangePassword: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+};
 export type ApiCustomer = {
   id: string;
   fullName: string;

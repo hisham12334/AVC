@@ -5,6 +5,7 @@ export const STAFF_ROLES = [
   'workshop_manager',
   'finance',
   'admin',
+  'super_admin',
 ] as const;
 export type StaffRole = (typeof STAFF_ROLES)[number];
 
@@ -43,9 +44,13 @@ export const PERMISSIONS = {
   'branches:read': STAFF_ROLES,
   'branches:manage': ['admin'],
   'integrations:manage': ['admin'],
+  // Only the super admin (who holds every grant) creates staff accounts and assigns roles.
+  'staff:manage': [],
 } as const satisfies Record<string, readonly StaffRole[]>;
 export type Permission = keyof typeof PERMISSIONS;
 
 export function can(role: StaffRole, permission: Permission): boolean {
+  // The super admin holds every grant, including staff:manage which no other role has.
+  if (role === 'super_admin') return true;
   return (PERMISSIONS[permission] as readonly StaffRole[]).includes(role);
 }

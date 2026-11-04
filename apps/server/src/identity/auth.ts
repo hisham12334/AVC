@@ -8,6 +8,8 @@ export type StaffPrincipal = {
   displayName: string;
   role: StaffRole;
   branchId: string | null;
+  email: string | null;
+  mustChangePassword: boolean;
 };
 export interface TokenVerifier {
   verify(token: string): Promise<string>;
@@ -44,8 +46,10 @@ export function registerIdentity(app: FastifyInstance, db: Pool, verifier: Token
       role: StaffRole;
       active: boolean;
       branch_id: string | null;
+      email: string | null;
+      must_change_password: boolean;
     }>(
-      'SELECT id, external_subject, display_name, role, active, branch_id FROM avc.staff_members WHERE external_subject = $1',
+      'SELECT id, external_subject, display_name, role, active, branch_id, email, must_change_password FROM avc.staff_members WHERE external_subject = $1',
       [subject],
     );
     const row = result.rows[0];
@@ -57,6 +61,8 @@ export function registerIdentity(app: FastifyInstance, db: Pool, verifier: Token
       displayName: row.display_name,
       role: row.role,
       branchId: row.branch_id,
+      email: row.email,
+      mustChangePassword: row.must_change_password,
     };
   }
 

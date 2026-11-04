@@ -9,7 +9,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "migrate:up": "tsx scripts/migrate.ts up",
     "migrate:status": "tsx scripts/migrate.ts status",
-    "migrate:validate": "tsx scripts/migrate.ts validate"
+    "migrate:validate": "tsx scripts/migrate.ts validate",
+    "create:super-admin": "tsx scripts/create-super-admin.ts"
   },
   "dependencies": {
     "@fastify/static": "^8.2.0",

@@ -33,16 +33,17 @@ describe('health checks', () => {
     await app.close();
   });
 
-  it('fails closed when no staff identity provider is configured', async () => {
-    const app = createApp(config, { query: vi.fn() } as never);
-    expect((await app.inject('/api/auth/status')).json()).toEqual({ configured: false });
+  it('rejects requests without a valid staff session', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    const app = createApp(config, { query } as never);
+    expect((await app.inject('/api/auth/status')).json()).toEqual({ configured: true });
     expect((await app.inject('/api/jobs')).statusCode).toBe(401);
-    const claimedToken = await app.inject({
+    const claimed = await app.inject({
       url: '/api/jobs',
       headers: { authorization: 'Bearer unverified' },
     });
-    expect(claimedToken.statusCode).toBe(503);
-    expect(claimedToken.json().error.code).toBe('AUTH_NOT_CONFIGURED');
+    expect(claimed.statusCode).toBe(401);
+    expect(claimed.json().error.code).toBe('INVALID_TOKEN');
     await app.close();
   });
 });
