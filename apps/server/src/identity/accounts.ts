@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { z } from 'zod';
@@ -47,7 +46,6 @@ const memberColumns = `id, display_name AS "displayName", email, role, branch_id
   active, must_change_password AS "mustChangePassword", last_login_at AS "lastLoginAt",
   created_at AS "createdAt"`;
 
-const generatePassword = (): string => randomBytes(9).toString('base64url');
 // New accounts start with this shared password and must change it at first sign-in.
 export const DEFAULT_STAFF_PASSWORD = 'avc@2026';
 const bearer = (header: string | undefined): string => (header ?? '').slice(7);
@@ -225,7 +223,7 @@ export function registerStaffAccountRoutes(app: FastifyInstance, db: Pool): void
 
   app.post('/api/admin/staff/:id/reset-password', manage, async (request, reply) => {
     const { id } = idSchema.parse(request.params);
-    const temporary = generatePassword();
+    const temporary = DEFAULT_STAFF_PASSWORD;
     const updated = await db.query(
       `UPDATE avc.staff_members SET password_hash = $2, must_change_password = true,
          failed_attempts = 0, locked_until = NULL
@@ -241,5 +239,49 @@ export function registerStaffAccountRoutes(app: FastifyInstance, db: Pool): void
     await revokeStaffSessions(db, id);
     reply.header('cache-control', 'no-store');
     return { temporaryPassword: temporary };
+  });
+
+  app.delete('/api/admin/staff/:id', manage, async (request, reply) => {
+    const { id } = idSchema.parse(request.params);
+    if (id === request.staff!.id)
+      throw new AppError(409, 'CANNOT_DELETE_SELF', 'You cannot delete your own account');
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      // Serialize deletions and role changes that affect the last active super admin.
+      await client.query('LOCK TABLE avc.staff_members IN SHARE ROW EXCLUSIVE MODE');
+      const result = await client.query<{ role: string; active: boolean }>(
+        'SELECT role, active FROM avc.staff_members WHERE id = $1 FOR UPDATE',
+        [id],
+      );
+      const member = result.rows[0];
+      if (!member) throw new AppError(404, 'STAFF_NOT_FOUND', 'Staff member was not found');
+      if (member.role === 'super_admin' && member.active) {
+        const others = await client.query(
+          "SELECT 1 FROM avc.staff_members WHERE role = 'super_admin' AND active AND id <> $1",
+          [id],
+        );
+        if (!others.rowCount)
+          throw new AppError(
+            409,
+            'LAST_SUPER_ADMIN',
+            'There must always be one active super admin',
+          );
+      }
+      await client.query('DELETE FROM avc.staff_members WHERE id = $1', [id]);
+      await client.query('COMMIT');
+      return reply.status(204).send();
+    } catch (error) {
+      await client.query('ROLLBACK');
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23503')
+        throw new AppError(
+          409,
+          'STAFF_HAS_RECORDS',
+          'This account is linked to workshop records and cannot be deleted. Switch it off instead.',
+        );
+      throw error;
+    } finally {
+      client.release();
+    }
   });
 }

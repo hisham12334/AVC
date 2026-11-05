@@ -81,7 +81,12 @@ async function failure(response: Response): Promise<ApiError> {
 
 export async function api<T>(
   path: string,
-  options: { method?: 'GET' | 'POST' | 'PATCH'; body?: unknown; staff?: boolean; auth?: Auth } = {},
+  options: {
+    method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+    body?: unknown;
+    staff?: boolean;
+    auth?: Auth;
+  } = {},
 ): Promise<T> {
   const auth: Auth = options.auth ?? (options.staff ? 'staff' : 'none');
   const headers: Record<string, string> = { ...authHeader(auth) };

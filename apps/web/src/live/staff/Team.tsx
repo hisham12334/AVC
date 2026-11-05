@@ -165,6 +165,29 @@ export function Team({ selfId }: { selfId: string }) {
                         <button
                           type="button"
                           className="btn ghost"
+                          onClick={() => {
+                            if (
+                              !confirm(
+                                `Permanently delete ${m.displayName}'s account? This cannot be undone.`,
+                              )
+                            )
+                              return;
+                            void run(async () => {
+                              await api(`/api/admin/staff/${m.id}`, {
+                                method: 'DELETE',
+                                staff: true,
+                              });
+                              setRevealed(null);
+                            });
+                          }}
+                        >
+                          Delete
+                        </button>
+                      )}
+                      {!self && (
+                        <button
+                          type="button"
+                          className="btn ghost"
                           onClick={() => void patch(m, { active: !m.active })}
                         >
                           {m.active ? 'Switch off' : 'Switch on'}

@@ -190,7 +190,65 @@ describe.sequential('staff sign-in and super admin account management', () => {
       headers: admin,
     });
     expect(reset.statusCode).toBe(200);
+    expect(reset.json().temporaryPassword).toBe('avc@2026');
     expect((await app.inject({ url: '/api/staff/me', headers: session })).statusCode).toBe(401);
     await tokenFor('reset@example.test', reset.json().temporaryPassword);
+  });
+
+  it('permanently deletes an unused staff account and revokes its session', async () => {
+    const admin = await tokenFor(SUPER, SUPER_PASSWORD);
+    const created = (
+      await app.inject({
+        method: 'POST',
+        url: '/api/admin/staff',
+        headers: admin,
+        payload: { displayName: 'Delete Me', email: 'delete@example.test', role: 'driver' },
+      })
+    ).json();
+    const session = await tokenFor('delete@example.test', 'avc@2026');
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/admin/staff/${created.staff.id}`,
+      headers: admin,
+    });
+    expect(response.statusCode).toBe(204);
+    expect((await app.inject({ url: '/api/staff/me', headers: session })).statusCode).toBe(401);
+    expect((await signIn('delete@example.test', 'avc@2026')).statusCode).toBe(401);
+    expect(
+      (await pool.query('SELECT 1 FROM avc.staff_members WHERE id = $1', [created.staff.id]))
+        .rowCount,
+    ).toBe(0);
+  });
+
+  it('protects self and staff linked to workshop records', async () => {
+    const admin = await tokenFor(SUPER, SUPER_PASSWORD);
+    const self = (await app.inject({ url: '/api/staff/me', headers: admin })).json().staff;
+    expect(
+      (await app.inject({ method: 'DELETE', url: `/api/admin/staff/${self.id}`, headers: admin }))
+        .statusCode,
+    ).toBe(409);
+    const created = (
+      await app.inject({
+        method: 'POST',
+        url: '/api/admin/staff',
+        headers: admin,
+        payload: { displayName: 'Linked', email: 'linked@example.test', role: 'driver' },
+      })
+    ).json();
+    await pool.query(
+      "INSERT INTO avc.customers(full_name,mobile_number,mobile_search,created_by_staff_id) VALUES ('Customer','123','123',$1)",
+      [created.staff.id],
+    );
+    const blocked = await app.inject({
+      method: 'DELETE',
+      url: `/api/admin/staff/${created.staff.id}`,
+      headers: admin,
+    });
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().error.code).toBe('STAFF_HAS_RECORDS');
+    expect(
+      (await pool.query('SELECT 1 FROM avc.staff_members WHERE id = $1', [created.staff.id]))
+        .rowCount,
+    ).toBe(1);
   });
 });
