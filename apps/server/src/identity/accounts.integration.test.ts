@@ -85,6 +85,7 @@ describe.sequential('staff sign-in and super admin account management', () => {
     });
     expect(created.statusCode).toBe(201);
     const { staff, temporaryPassword } = created.json();
+    expect(temporaryPassword).toBe('avc@2026');
     expect(staff).toMatchObject({
       role: 'driver',
       email: 'tariq@example.test',

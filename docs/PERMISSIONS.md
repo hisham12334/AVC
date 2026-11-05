@@ -27,7 +27,7 @@ The API maps a verified external subject to one active staff record. `apps/serve
 
 ## Staff accounts and super admin
 
-Staff sign in with email and password; the server stores only a scrypt hash and a SHA-256 of each 12-hour session token. `super_admin` holds every grant and alone has `staff:manage`: create accounts (temporary password shown once, change forced at first sign-in), assign role and branch, reset passwords, switch accounts off (which ends their sessions). The last active super admin cannot be demoted or switched off. The first super admin is created from the command line, never through the API.
+Staff sign in with email and password; the server stores only a scrypt hash and a SHA-256 of each 12-hour session token. `super_admin` holds every grant and alone has `staff:manage`: create accounts (starting password `avc@2026`, change forced at first sign-in), assign role and branch, reset passwords, switch accounts off (which ends their sessions). The last active super admin cannot be demoted or switched off. The first super admin is created from the command line, never through the API.
 
 ## Milestone 1B additions
 

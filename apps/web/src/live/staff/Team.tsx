@@ -56,7 +56,7 @@ export function Team({ selfId }: { selfId: string }) {
         <div className="banner" role="status">
           <p>
             <strong>{revealed.name}</strong> ({revealed.email}) signs in with this temporary
-            password and must change it straight away. It is shown only once:
+            password and must change it straight away:
           </p>
           <p>
             <code>{revealed.password}</code>{' '}

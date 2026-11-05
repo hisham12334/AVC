@@ -29,7 +29,7 @@ const createSchema = z
     email: z.string().trim().toLowerCase().max(200).pipe(z.email()),
     role: roleSchema,
     branchId: z.uuid().nullable().default(null),
-    // Omit to have one generated; either way it is shown once and must be changed at first sign-in.
+    // Omit to use the standard starting password; it must be changed at first sign-in.
     temporaryPassword: z.string().min(10).max(200).optional(),
   })
   .strict();
@@ -48,6 +48,8 @@ const memberColumns = `id, display_name AS "displayName", email, role, branch_id
   created_at AS "createdAt"`;
 
 const generatePassword = (): string => randomBytes(9).toString('base64url');
+// New accounts start with this shared password and must change it at first sign-in.
+export const DEFAULT_STAFF_PASSWORD = 'avc@2026';
 const bearer = (header: string | undefined): string => (header ?? '').slice(7);
 
 export function registerStaffAccountRoutes(app: FastifyInstance, db: Pool): void {
@@ -169,7 +171,7 @@ export function registerStaffAccountRoutes(app: FastifyInstance, db: Pool): void
 
   app.post('/api/admin/staff', manage, async (request, reply) => {
     const input = createSchema.parse(request.body);
-    const temporary = input.temporaryPassword ?? generatePassword();
+    const temporary = input.temporaryPassword ?? DEFAULT_STAFF_PASSWORD;
     const taken = await db.query('SELECT 1 FROM avc.staff_members WHERE lower(email) = $1', [
       input.email,
     ]);

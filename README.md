@@ -18,7 +18,7 @@ Phase 0 foundation plus Milestone 1A intake and auditable job cards for a two-lo
 
 Open `http://127.0.0.1:3000/` for the shell. `GET /health/live` checks the process; `GET /health/ready` checks PostgreSQL and returns 503 when it cannot connect. Development API watch mode: `pnpm dev`. The served web shell is the latest built `apps/web/dist`; rebuild the web package after edits.
 
-The PWA provides responsive board/detail views with loading, empty and error states. It does not cache customer/API responses. Without a selected and configured identity provider, it shows an access error rather than live records. There is no seeded staff login. Create the first super admin with `AVC_SUPER_ADMIN_PASSWORD=<10+ chars> pnpm create:super-admin <email> "<name>"` after `pnpm migrate:up` (0005 adds staff login). It must change that password at first sign-in. The super admin then adds staff, assigns roles and branches, resets passwords and switches accounts off under **Team**; no other role can.
+The PWA provides responsive board/detail views with loading, empty and error states. It does not cache customer/API responses. Without a selected and configured identity provider, it shows an access error rather than live records. There is no seeded staff login. Create the first super admin with `AVC_SUPER_ADMIN_PASSWORD=<10+ chars> pnpm create:super-admin <email> "<name>"` after `pnpm migrate:up` (0005 adds staff login). It must change that password at first sign-in. The super admin then adds staff (new accounts start with the password `avc@2026` and must change it at first sign-in), assigns roles and branches, resets passwords and switches accounts off under **Team**; no other role can.
 
 ## Checks
 
