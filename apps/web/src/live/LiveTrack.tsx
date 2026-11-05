@@ -190,7 +190,7 @@ export function BillScreen({ path, auth, back }: { path: string; auth: Auth; bac
           </button>
         </p>
       )}
-      {state.kind === 'ready' && <BillView bill={state.data.bill} />}
+      {state.kind === 'ready' && <BillView bill={state.data.bill} customer={auth !== 'staff'} />}
     </div>
   );
 }

@@ -1,11 +1,31 @@
 import type { ApiBill } from '../live/api';
+import { useState } from 'react';
 import { Icon, SeverityBadge, aed, fmtDate } from './ui';
 
 // The professional bill built from the advisor's entries. Printable, so "Save as PDF" works from the browser.
-export function BillView({ bill, preview = false }: { bill: ApiBill; preview?: boolean }) {
+export function BillView({
+  bill,
+  preview = false,
+  customer = false,
+}: {
+  bill: ApiBill;
+  preview?: boolean;
+  customer?: boolean;
+}) {
   const isInvoice = bill.document === 'invoice';
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState(false);
+  const paymentLabel =
+    bill.paymentStatus === 'received'
+      ? 'Paid'
+      : bill.paymentStatus === 'reversed'
+        ? 'Payment pending'
+        : 'Due on delivery';
   return (
-    <article className="bill" aria-label={isInvoice ? 'Invoice' : 'Quote'}>
+    <article
+      className={customer ? 'bill customer-bill' : 'bill'}
+      aria-label={isInvoice ? 'Invoice' : 'Quote'}
+    >
       <header className="bill-head">
         <div className="bill-brand">
           <span className="brand-mark">AVC</span>
@@ -20,6 +40,19 @@ export function BillView({ bill, preview = false }: { bill: ApiBill; preview?: b
           <span>{fmtDate(new Date(bill.issuedAt).getTime())}</span>
         </div>
       </header>
+
+      {customer && (
+        <section className="bill-summary" aria-label="Payment summary">
+          <div>
+            <span>{paymentLabel}</span>
+            <strong>{aed(bill.totals.approvedAed, 2)}</strong>
+            <small>Based on the work you approved</small>
+          </div>
+          <span className="bill-summary-mark" aria-hidden="true">
+            <Icon name="check" size={20} />
+          </span>
+        </section>
+      )}
 
       <section className="bill-parties">
         <div>
@@ -46,6 +79,15 @@ export function BillView({ bill, preview = false }: { bill: ApiBill; preview?: b
         </div>
       </section>
 
+      {customer && (
+        <div className="bill-section-heading">
+          <span>01</span>
+          <div>
+            <h3>Work breakdown</h3>
+            <p>Every item, clearly accounted for</p>
+          </div>
+        </div>
+      )}
       <table className="bill-lines">
         <thead>
           <tr>
@@ -113,13 +155,7 @@ export function BillView({ bill, preview = false }: { bill: ApiBill; preview?: b
               </div>
             )}
             <div className="grand">
-              <span>
-                {bill.paymentStatus === 'received'
-                  ? 'Paid'
-                  : bill.paymentStatus === 'reversed'
-                    ? 'Payment pending'
-                    : 'Due on delivery'}
-              </span>
+              <span>{paymentLabel}</span>
               <strong>{aed(bill.totals.approvedAed, 2)}</strong>
             </div>
           </>
@@ -142,9 +178,38 @@ export function BillView({ bill, preview = false }: { bill: ApiBill; preview?: b
       </section>
 
       <footer className="bill-actions no-print">
-        <button type="button" className="btn primary" onClick={() => window.print()}>
-          Print or save as PDF
-        </button>
+        {customer ? (
+          <>
+            {downloadError && (
+              <p className="banner banner-critical" role="alert">
+                Could not download your PDF. Please try again.
+              </p>
+            )}
+            <button
+              type="button"
+              className="btn primary"
+              disabled={downloading}
+              onClick={async () => {
+                setDownloading(true);
+                setDownloadError(false);
+                try {
+                  const { downloadBillPdf } = await import('./billPdf');
+                  await downloadBillPdf(bill);
+                } catch {
+                  setDownloadError(true);
+                } finally {
+                  setDownloading(false);
+                }
+              }}
+            >
+              <Icon name="download" size={17} /> {downloading ? 'Preparing PDF…' : 'Download PDF'}
+            </button>
+          </>
+        ) : (
+          <button type="button" className="btn primary" onClick={() => window.print()}>
+            Print or save as PDF
+          </button>
+        )}
       </footer>
     </article>
   );

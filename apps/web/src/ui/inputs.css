@@ -1118,6 +1118,125 @@ a.qcard:hover {
   }
 }
 
+/* Customer bill */
+.customer-bill {
+  gap: 28px;
+  border-radius: 14px;
+}
+.customer-bill .bill-head {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+.customer-bill .bill-brand .brand-mark {
+  border-radius: 9px;
+}
+.customer-bill .bill-brand strong {
+  color: var(--ink);
+}
+.customer-bill .bill-brand span:not(.brand-mark) {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.customer-bill .bill-id h2 {
+  color: var(--ink);
+  letter-spacing: -0.035em;
+}
+.bill-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: clamp(20px, 4vw, 28px);
+  border-radius: 10px;
+  background: #0e2238;
+  color: #fff;
+}
+.bill-summary > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.bill-summary span:first-child,
+.bill-summary small {
+  color: #c9d6e6;
+  font-size: 0.82rem;
+}
+.bill-summary strong {
+  font-size: clamp(1.65rem, 5vw, 2.25rem);
+  line-height: 1.2;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.bill-summary-mark {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  color: #fff;
+}
+.customer-bill .bill-parties {
+  padding-bottom: 4px;
+}
+.customer-bill .bill-parties h3,
+.customer-bill .bill-notes h3 {
+  color: var(--blue-ink);
+}
+.bill-section-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: -12px;
+}
+.bill-section-heading > span {
+  color: var(--brand);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding-top: 2px;
+}
+.bill-section-heading h3 {
+  font-size: 1.05rem;
+}
+.bill-section-heading p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.customer-bill .bill-totals {
+  padding: 18px;
+  border-radius: 10px;
+  background: #f4f8fc;
+}
+.customer-bill .bill-totals .grand {
+  border-top: 1px solid var(--line);
+}
+.customer-bill .bill-notes {
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+}
+.customer-bill .bill-actions .btn {
+  min-height: 48px;
+}
+@media screen and (max-width: 640px) {
+  .customer-bill {
+    gap: 22px;
+  }
+  .customer-bill .bill-id {
+    width: 100%;
+  }
+  .customer-bill .bill-lines tr {
+    gap: 11px;
+  }
+  .customer-bill .bill-lines td[data-label='Work'] {
+    margin-bottom: 4px;
+  }
+  .customer-bill .bill-totals {
+    width: 100%;
+  }
+}
+
 /* Staff account controls */
 .team-table-wrap {
   overflow-x: auto;
