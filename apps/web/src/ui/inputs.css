@@ -5,7 +5,7 @@
 }
 .form .row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 .field input,
@@ -52,7 +52,7 @@
 }
 .seg {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 .seg button {
@@ -187,7 +187,7 @@ h2.mini {
 }
 .corner-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   margin-top: 12px;
 }
@@ -486,11 +486,10 @@ a.qcard:hover {
   gap: 12px;
   padding: 12px 16px;
   margin: 0 -4px;
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(8px);
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 16px;
-  box-shadow: 0 -6px 24px rgba(29, 42, 59, 0.08);
+  box-shadow: none;
 }
 .tally {
   display: flex;
@@ -681,7 +680,441 @@ a.qcard:hover {
     grid-template-columns: 1fr;
   }
   .corner-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Refined surfaces and responsive customer layouts. */
+.btn {
+  min-height: 44px;
+  border-radius: 8px;
+  line-height: 1.35;
+  text-align: center;
+}
+.btn.primary:hover:not(:disabled) {
+  background: var(--blue-ink);
+}
+.btn:disabled {
+  opacity: 0.6;
+}
+.field {
+  min-width: 0;
+}
+.field input,
+.field select,
+.field textarea,
+.search,
+.draft-title {
+  min-width: 0;
+  min-height: 46px;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: var(--brand);
+}
+.gate {
+  min-height: 100svh;
+  padding-top: max(24px, env(safe-area-inset-top));
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+.gate-card {
+  gap: 20px;
+}
+.gate-card > .brand-mark {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.gate-card > p {
+  margin: 0;
+}
+.gate-card > .btn {
+  width: 100%;
+}
+.pbar {
+  min-height: 72px;
+  padding: 12px max(16px, calc((100% - 960px) / 2));
+  border-bottom: 1px solid var(--line);
+}
+.pbar-brand {
+  flex-shrink: 0;
+  letter-spacing: -0.02em;
+}
+.pbar nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  border-radius: 6px;
+  font-size: 0.88rem;
+}
+.pbar nav a:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.p-pad {
+  max-width: 720px;
+  padding: 36px 24px 64px;
+  gap: 18px;
+}
+.p-pad .mini {
+  margin-top: 16px;
+  margin-bottom: -4px;
+}
+.p-pad > .mini-list li {
+  background: var(--surface);
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.qcard {
+  border-radius: 10px;
+  padding: 20px;
+  gap: 14px;
+}
+a.qcard:hover {
+  border-color: var(--brand);
+  transform: none;
+}
+.qcard-top strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+.track {
+  max-width: 640px;
+  min-height: 100svh;
+}
+.t-hero {
+  padding-top: max(28px, env(safe-area-inset-top));
+}
+.t-brand {
+  gap: 8px;
+  font-size: 0.82rem;
+}
+.t-brand .brand-mark {
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.live {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  font-size: 0.72rem;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+.live i {
+  width: 6px;
+  height: 6px;
+}
+.t-car {
+  margin-top: 32px;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.t-hero h1 {
+  font-size: clamp(1.65rem, 5.8vw, 2.15rem);
+  line-height: 1.2;
+  letter-spacing: -0.035em;
+  max-width: 480px;
+  margin-top: 24px;
+}
+.t-blurb {
+  font-size: 0.94rem;
+  line-height: 1.65;
+  margin-bottom: 24px;
+}
+.t-progress span {
+  height: 3px;
+  border-radius: 1px;
+}
+.t-body {
+  padding: 24px 20px max(32px, env(safe-area-inset-bottom));
+  gap: 18px;
+}
+.t-card {
+  padding: 24px;
+}
+.t-card h2 {
+  font-size: 1.08rem;
+  letter-spacing: -0.025em;
+}
+.t-card-head,
+.t-item-top {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.t-card p {
+  line-height: 1.65;
+}
+.t-item {
+  border-radius: 8px;
+  border-left-width: 3px;
+  padding: 16px;
+}
+.t-item-top strong,
+.q-price,
+.bill-totals strong,
+.kpi-value {
+  font-variant-numeric: tabular-nums;
+}
+.seg-btns {
+  gap: 8px;
+}
+.seg-btns button {
+  border-radius: 7px;
+  padding: 12px 8px;
+  font-size: 0.9rem;
+}
+.t-submit {
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.t-submit > div {
+  min-width: 0;
+}
+.t-submit .btn {
+  flex: 1 1 180px;
+}
+.t-foot {
+  padding: 20px;
+  flex-wrap: wrap;
+}
+.t-foot > div {
+  flex: 1 1 200px;
+}
+.t-foot .muted {
+  color: #8fa6bf;
+}
+.journey {
+  margin-top: 24px;
+}
+.journey li {
+  padding-bottom: 22px;
+}
+.journey li:last-child {
+  padding-bottom: 0;
+}
+.journey li.now .j-dot {
+  border-width: 6px;
+}
+.track .qlist.plain li {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  padding: 16px 0;
+}
+.track .qlist .q-title {
+  grid-column: 1;
+  grid-row: 1;
+}
+.track .qlist .q-price {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+}
+.track .qlist .sev {
+  justify-self: start;
+}
+.track .qlist .decision {
+  display: inline-flex;
+  justify-self: end;
+}
+.banner {
+  flex-wrap: wrap;
+  border-radius: 8px;
+  line-height: 1.6;
+}
+.dl > div > * {
+  min-width: 0;
+}
+.dl dd {
+  overflow-wrap: anywhere;
+}
+.p-pad,
+.t-body,
+.bill,
+.page {
+  overflow-wrap: anywhere;
+}
+.bill-page {
+  display: grid;
+  gap: 20px;
+}
+.bill {
+  border-radius: 10px;
+}
+.bill-brand > .brand-mark {
+  flex-shrink: 0;
+}
+.bill-parties {
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+}
+.bill-totals strong {
+  text-align: right;
+}
+.bill-link {
+  gap: 12px;
+}
+.bill-link span {
+  min-width: 0;
+}
+.mobile-nav {
+  scrollbar-width: thin;
+}
+@media screen and (max-width: 640px) {
+  .p-pad > .banner {
+    display: block;
+  }
+  .p-pad > .banner svg {
+    vertical-align: -2px;
+    margin-right: 4px;
+  }
+  .page {
+    padding: 24px 16px 40px;
+    gap: 16px;
+  }
+  .card {
+    padding: 18px;
+  }
+  .p-pad {
+    padding: 28px 16px 40px;
+  }
+  .t-body {
+    padding: 16px 12px max(24px, env(safe-area-inset-bottom));
+    gap: 14px;
+  }
+  .t-card {
+    padding: 18px;
+  }
+  .bill-lines,
+  .bill-lines tbody {
+    display: block;
+  }
+  .bill-lines thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .bill-lines tr {
+    display: grid;
+    gap: 10px;
+    padding: 18px 0;
+    border-top: 1px solid var(--line);
+  }
+  .bill-lines td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    border: 0;
+    padding: 0;
+    min-width: 0;
+  }
+  .bill-lines td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 400;
+    flex-shrink: 0;
+  }
+  .bill-lines td[data-label='Work'] {
+    display: block;
+    order: -1;
+  }
+  .bill-lines td[data-label='Work']::before {
+    display: none;
+  }
+  .bill-lines td[data-label='Item'] {
+    display: none;
+  }
+  .bill-lines .num {
+    white-space: normal;
+    text-align: right;
+  }
+  .bill-id {
+    text-align: left;
+  }
+  .bill-actions .btn {
+    width: 100%;
+  }
+  .stepper[aria-label='Job progress'] {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    row-gap: 16px;
+  }
+  .stepper li:nth-child(5)::before {
+    display: none;
+  }
+  .sticky-bar {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+}
+@media screen and (max-width: 380px) {
+  .pbar {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .pbar-brand {
+    gap: 6px;
+    font-size: 0.9rem;
+  }
+  .pbar nav a {
+    padding: 8px 10px;
+    font-size: 0.82rem;
+  }
+  .t-hero {
+    padding: 24px 18px;
+  }
+  .t-brand {
+    gap: 6px;
+    font-size: 0.75rem;
+  }
+  .t-card {
+    padding: 16px;
+  }
+  .t-item {
+    padding: 12px;
+  }
+  .t-submit {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .t-submit .btn {
+    flex: auto;
+    width: 100%;
+  }
+  .qcard {
+    padding: 16px;
+  }
+  .qcard-top {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .dl > div {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .dl dd {
+    text-align: left;
+  }
+  .corner-grid,
+  .sev-pick {
+    grid-template-columns: 1fr;
+  }
+  .draft-top,
+  .card-head {
+    flex-wrap: wrap;
+  }
+  .pipeline li {
+    grid-template-columns: 90px minmax(0, 1fr) 24px;
+    gap: 8px;
+  }
+  .actions > .btn {
+    flex: 1 1 auto;
   }
 }
 

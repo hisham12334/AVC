@@ -19,7 +19,7 @@ export function Stepper({ stage, arrival }: { stage: StageKey; arrival?: 'pickup
     <ol
       className="stepper"
       aria-label="Job progress"
-      style={{ gridTemplateColumns: `repeat(${steps.length}, 1fr)` }}
+      style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}
     >
       {steps.map((s, i) => (
         <li
@@ -138,6 +138,7 @@ export function TrackView({
         <div
           className="t-progress"
           role="progressbar"
+          aria-label="Service progress"
           aria-valuemin={1}
           aria-valuemax={steps.length}
           aria-valuenow={cur + 1}
@@ -254,7 +255,11 @@ export function TrackView({
           <h2>Your car&rsquo;s journey</h2>
           <ol className="journey">
             {steps.map((s, i) => (
-              <li key={s.key} className={i < cur ? 'done' : i === cur ? 'now' : ''}>
+              <li
+                key={s.key}
+                className={i < cur ? 'done' : i === cur ? 'now' : ''}
+                aria-current={i === cur ? 'step' : undefined}
+              >
                 <span className="j-dot">{i < cur ? <Icon name="check" size={12} /> : ''}</span>
                 <div>
                   <strong>{s.customerLabel}</strong>

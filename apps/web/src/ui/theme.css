@@ -1,5 +1,4 @@
-/* Demo experience. Palette follows the client's UI suite:
-   red = critical, yellow = moderate, blue = not critical. */
+/* Shared AVC palette. Status colors retain their semantic meaning. */
 :root {
   --brand: #00a1f2;
   --brand-2: #00afe4;
@@ -18,11 +17,43 @@
   --blue-tint: #eaf7fe;
   --blue-ink: #00699f;
   --ok: #12a36b;
-  --radius: 16px;
-  --shadow: 0 1px 2px rgba(29, 42, 59, 0.04), 0 8px 24px rgba(29, 42, 59, 0.06);
+  --radius: 12px;
+  --shadow: none;
   font-family: Inter, 'Segoe UI', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
   color: var(--text);
   background: var(--bg);
+}
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html {
+  -webkit-text-size-adjust: 100%;
+}
+#root {
+  min-height: 100svh;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+svg {
+  flex-shrink: 0;
+}
+img {
+  max-width: 100%;
 }
 body {
   background: var(--bg);
@@ -85,7 +116,7 @@ h2 {
 /* ---------- shell ---------- */
 .shell {
   display: grid;
-  grid-template-columns: 264px 1fr;
+  grid-template-columns: 248px minmax(0, 1fr);
   min-height: 100vh;
 }
 .side {
@@ -96,7 +127,7 @@ h2 {
   flex-direction: column;
   gap: 18px;
   padding: 22px 16px;
-  background: linear-gradient(180deg, #0e2238 0%, #12304f 100%);
+  background: #0e2238;
   color: #c9d6e6;
 }
 .side-brand {
@@ -118,12 +149,12 @@ h2 {
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  background: var(--brand);
   color: #fff;
   font-weight: 800;
   letter-spacing: 0.04em;
   font-size: 0.9rem;
-  box-shadow: 0 6px 16px rgba(0, 161, 242, 0.4);
+  box-shadow: none;
 }
 .branch {
   display: grid;
@@ -218,7 +249,7 @@ h2 {
   padding: 28px clamp(16px, 3vw, 40px) 56px;
   display: grid;
   gap: 20px;
-  animation: rise 0.35s ease both;
+  animation: none;
 }
 .page-head {
   display: flex;
@@ -314,11 +345,11 @@ h2 {
     background 0.15s;
 }
 .btn:hover:not(:disabled) {
-  transform: translateY(-1px);
+  transform: none;
   box-shadow: var(--shadow);
 }
 .btn.primary {
-  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  background: var(--brand);
   border-color: transparent;
   color: #fff;
 }
@@ -392,7 +423,7 @@ h2 {
 .bar > div {
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--brand), var(--brand-2));
+  background: var(--brand);
   transition: width 0.6s ease;
 }
 .bar.thick {
@@ -415,7 +446,7 @@ h2 {
 /* ---------- KPIs ---------- */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
   gap: 14px;
 }
 .kpi {
@@ -475,19 +506,19 @@ h2 {
   color: var(--muted);
 }
 .tone-moderate .bar > div {
-  background: linear-gradient(90deg, var(--yellow), #ffd25a);
+  background: var(--yellow);
 }
 
 .grid-2 {
   display: grid;
-  grid-template-columns: 1.6fr 1fr;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
   gap: 20px;
 }
 .grid-2.even {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .detail-grid {
-  grid-template-columns: 1.1fr 1fr;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
   align-items: start;
 }
 .stack {
@@ -782,7 +813,7 @@ i.seg-red {
     box-shadow 0.15s;
 }
 .jcard:hover {
-  transform: translateY(-2px);
+  transform: none;
   box-shadow: var(--shadow);
 }
 .edge-moderate {
@@ -861,7 +892,7 @@ i.seg-red {
   background: #fff;
   border: 3px solid var(--brand);
   color: var(--brand);
-  box-shadow: 0 0 0 5px rgba(0, 161, 242, 0.15);
+  box-shadow: none;
 }
 .stepper li.now .lbl {
   color: var(--ink);
@@ -980,15 +1011,15 @@ i.seg-red {
   border-radius: 50%;
   background: var(--brand);
   margin-top: 4px;
-  box-shadow: 0 0 0 4px rgba(0, 161, 242, 0.15);
+  box-shadow: none;
 }
 .ev-finding .ev-dot {
   background: var(--yellow);
-  box-shadow: 0 0 0 4px rgba(255, 184, 0, 0.2);
+  box-shadow: none;
 }
 .ev-approval .ev-dot {
   background: var(--ok);
-  box-shadow: 0 0 0 4px rgba(18, 163, 107, 0.18);
+  box-shadow: none;
 }
 .ev-top strong {
   color: var(--ink);
@@ -1023,7 +1054,7 @@ i.seg-red {
   width: 92px;
   height: 64px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #d8e6f5, #eef5fc);
+  background: #e8eff7;
   color: #5d7690;
   text-align: center;
   padding: 4px;
@@ -1040,15 +1071,13 @@ i.seg-red {
   max-width: 560px;
   margin: 0 auto;
   background: var(--bg);
-  box-shadow: 0 0 60px rgba(29, 42, 59, 0.08);
+  box-shadow: none;
 }
 .t-hero {
-  padding: 22px 22px 28px;
+  padding: 28px 24px 30px;
   color: #fff;
-  background:
-    radial-gradient(circle at 85% -10%, rgba(255, 255, 255, 0.25), transparent 45%),
-    linear-gradient(160deg, #0e2238 0%, #0a5d93 55%, #00a1f2 130%);
-  border-radius: 0 0 28px 28px;
+  background: linear-gradient(160deg, #0e2238 0%, #0a5d93 55%, #00a1f2 130%);
+  border-radius: 0;
 }
 .t-brand {
   display: flex;
@@ -1078,15 +1107,7 @@ i.seg-red {
   height: 8px;
   border-radius: 50%;
   background: #4be3a0;
-  animation: pulse 1.8s infinite;
-}
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(75, 227, 160, 0.6);
-  }
-  100% {
-    box-shadow: 0 0 0 10px rgba(75, 227, 160, 0);
-  }
+  animation: none;
 }
 .t-car {
   margin: 26px 0 2px;
@@ -1135,7 +1156,7 @@ i.seg-red {
 }
 .t-card {
   background: var(--surface);
-  border-radius: 20px;
+  border-radius: 12px;
   padding: 18px;
   box-shadow: var(--shadow);
   border: 1px solid var(--line);
@@ -1149,7 +1170,7 @@ i.seg-red {
   align-items: center;
 }
 .t-decide {
-  border: 2px solid color-mix(in srgb, var(--yellow) 60%, white);
+  border: 1px solid color-mix(in srgb, var(--yellow) 60%, white);
 }
 .t-items {
   list-style: none;
@@ -1195,7 +1216,7 @@ i.seg-red {
 }
 .seg-btns {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-top: 14px;
 }
@@ -1288,7 +1309,7 @@ i.seg-red {
 .journey li.now .j-dot {
   background: #fff;
   border: 4px solid var(--brand);
-  box-shadow: 0 0 0 5px rgba(0, 161, 242, 0.15);
+  box-shadow: none;
 }
 .journey li.done strong,
 .journey li.now strong {
@@ -1305,7 +1326,7 @@ i.seg-red {
   padding: 16px;
   background: #0e2238;
   color: #d9e6f5;
-  border-radius: 20px;
+  border-radius: 12px;
 }
 .t-foot strong {
   display: block;
@@ -1388,7 +1409,8 @@ i.seg-red {
   width: min(420px, 100%);
   display: grid;
   gap: 14px;
-  justify-items: start;
+  justify-items: stretch;
+  padding: clamp(20px, 5vw, 36px);
 }
 .gate-card form {
   display: grid;

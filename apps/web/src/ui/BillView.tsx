@@ -66,8 +66,8 @@ export function BillView({ bill, preview = false }: { bill: ApiBill; preview?: b
           )}
           {bill.lines.map((l) => (
             <tr key={l.position} className={l.decision === 'rejected' ? 'declined' : ''}>
-              <td>{l.position}</td>
-              <td>
+              <td data-label="Item">{l.position}</td>
+              <td data-label="Work">
                 <strong>{l.title}</strong>
                 {l.detail && <small>{l.detail}</small>}
                 {l.evidenceCount > 0 && (
@@ -77,12 +77,14 @@ export function BillView({ bill, preview = false }: { bill: ApiBill; preview?: b
                   </small>
                 )}
               </td>
-              <td>
+              <td data-label="Priority">
                 <SeverityBadge level={l.severity} />
               </td>
-              <td className="num">{aed(l.priceAed, 2)}</td>
+              <td className="num" data-label="Price">
+                {aed(l.priceAed, 2)}
+              </td>
               {!preview && (
-                <td>
+                <td data-label="Status">
                   <span className={`decision d-${l.decision}`}>
                     {l.decision === 'pending' ? 'awaiting you' : l.decision}
                   </span>

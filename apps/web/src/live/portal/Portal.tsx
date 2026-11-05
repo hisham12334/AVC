@@ -27,10 +27,18 @@ function Bar({ active }: { active: 'home' | 'users' | '' }) {
         <strong>My AVC</strong>
       </a>
       <nav aria-label="Profile">
-        <a href="#/" className={active === 'home' ? 'on' : ''}>
+        <a
+          href="#/"
+          className={active === 'home' ? 'on' : ''}
+          aria-current={active === 'home' ? 'page' : undefined}
+        >
           My cars
         </a>
-        <a href="#/users" className={active === 'users' ? 'on' : ''}>
+        <a
+          href="#/users"
+          className={active === 'users' ? 'on' : ''}
+          aria-current={active === 'users' ? 'page' : undefined}
+        >
           Users
         </a>
       </nav>
