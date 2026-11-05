@@ -1118,6 +1118,88 @@ a.qcard:hover {
   }
 }
 
+/* Staff account controls */
+.team-table-wrap {
+  overflow-x: auto;
+  margin-top: 16px;
+}
+.team-table select {
+  max-width: 100%;
+  min-height: 44px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+.team-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.team-action-buttons .btn {
+  padding: 8px 12px;
+}
+@media screen and (max-width: 860px) {
+  .team-table-wrap {
+    overflow: visible;
+  }
+  .team-table,
+  .team-table tbody {
+    display: block;
+    width: 100%;
+  }
+  .team-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .team-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 12px;
+    padding: 18px 0;
+    border-top: 1px solid var(--line);
+  }
+  .team-table td {
+    display: grid;
+    align-content: start;
+    gap: 5px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    overflow-wrap: anywhere;
+  }
+  .team-table td[data-label]:not(.team-person)::before {
+    content: attr(data-label);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .team-table .team-person,
+  .team-table .team-actions {
+    grid-column: 1 / -1;
+  }
+  .team-table .team-person br {
+    display: none;
+  }
+  .team-table select {
+    width: 100%;
+    font-size: 1rem;
+  }
+  .team-action-buttons .btn {
+    flex: 1 1 auto;
+  }
+}
+@media screen and (max-width: 360px) {
+  .team-table tr {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* printing: the bill and the QR sheet print cleanly */
 @media print {
   .no-print,

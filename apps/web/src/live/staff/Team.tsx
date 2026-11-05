@@ -82,8 +82,8 @@ export function Team({ selfId }: { selfId: string }) {
 
       <section className="card">
         <h2>Accounts</h2>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="table">
+        <div className="team-table-wrap">
+          <table className="table team-table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -98,12 +98,12 @@ export function Team({ selfId }: { selfId: string }) {
                 const self = m.id === selfId;
                 return (
                   <tr key={m.id} style={m.active ? undefined : { opacity: 0.6 }}>
-                    <td>
+                    <td className="team-person" data-label="Name">
                       <strong>{m.displayName}</strong>
                       <br />
                       <small className="muted">{m.email ?? 'No email login'}</small>
                     </td>
-                    <td>
+                    <td data-label="Role">
                       <select
                         aria-label={`Role for ${m.displayName}`}
                         value={m.role}
@@ -117,7 +117,7 @@ export function Team({ selfId }: { selfId: string }) {
                         ))}
                       </select>
                     </td>
-                    <td>
+                    <td data-label="Branch">
                       <select
                         aria-label={`Branch for ${m.displayName}`}
                         value={m.branchId ?? ''}
@@ -131,68 +131,70 @@ export function Team({ selfId }: { selfId: string }) {
                         ))}
                       </select>
                     </td>
-                    <td>
+                    <td data-label="Status">
                       {m.active
                         ? m.mustChangePassword
                           ? 'Awaiting first sign-in'
                           : 'Active'
                         : 'Off'}
                     </td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      {m.email && (
-                        <button
-                          type="button"
-                          className="btn ghost"
-                          onClick={() =>
-                            void run(async () => {
-                              if (!confirm(`Reset the password for ${m.displayName}?`)) return;
-                              const r = await api<{ temporaryPassword: string }>(
-                                `/api/admin/staff/${m.id}/reset-password`,
-                                { method: 'POST', staff: true },
-                              );
-                              setRevealed({
-                                name: m.displayName,
-                                email: m.email!,
-                                password: r.temporaryPassword,
-                              });
-                            })
-                          }
-                        >
-                          <Icon name="lock" size={14} /> Reset
-                        </button>
-                      )}
-                      {!self && (
-                        <button
-                          type="button"
-                          className="btn ghost"
-                          onClick={() => {
-                            if (
-                              !confirm(
-                                `Permanently delete ${m.displayName}'s account? This cannot be undone.`,
+                    <td className="team-actions">
+                      <div className="team-action-buttons">
+                        {m.email && (
+                          <button
+                            type="button"
+                            className="btn ghost"
+                            onClick={() =>
+                              void run(async () => {
+                                if (!confirm(`Reset the password for ${m.displayName}?`)) return;
+                                const r = await api<{ temporaryPassword: string }>(
+                                  `/api/admin/staff/${m.id}/reset-password`,
+                                  { method: 'POST', staff: true },
+                                );
+                                setRevealed({
+                                  name: m.displayName,
+                                  email: m.email!,
+                                  password: r.temporaryPassword,
+                                });
+                              })
+                            }
+                          >
+                            <Icon name="lock" size={14} /> Reset
+                          </button>
+                        )}
+                        {!self && (
+                          <button
+                            type="button"
+                            className="btn ghost"
+                            onClick={() => {
+                              if (
+                                !confirm(
+                                  `Permanently delete ${m.displayName}'s account? This cannot be undone.`,
+                                )
                               )
-                            )
-                              return;
-                            void run(async () => {
-                              await api(`/api/admin/staff/${m.id}`, {
-                                method: 'DELETE',
-                                staff: true,
+                                return;
+                              void run(async () => {
+                                await api(`/api/admin/staff/${m.id}`, {
+                                  method: 'DELETE',
+                                  staff: true,
+                                });
+                                setRevealed(null);
                               });
-                              setRevealed(null);
-                            });
-                          }}
-                        >
-                          Delete
-                        </button>
-                      )}
-                      {!self && (
-                        <button
-                          type="button"
-                          className="btn ghost"
-                          onClick={() => void patch(m, { active: !m.active })}
-                        >
-                          {m.active ? 'Switch off' : 'Switch on'}
-                        </button>
-                      )}
+                            }}
+                          >
+                            Delete
+                          </button>
+                        )}
+                        {!self && (
+                          <button
+                            type="button"
+                            className="btn ghost"
+                            onClick={() => void patch(m, { active: !m.active })}
+                          >
+                            {m.active ? 'Switch off' : 'Switch on'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
