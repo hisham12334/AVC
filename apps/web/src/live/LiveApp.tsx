@@ -10,6 +10,7 @@ import { InspectionCapture, InspectionQueue } from './staff/Inspection';
 import { PricingEditor, PricingQueue } from './staff/Pricing';
 import { ChangePassword } from './staff/Account';
 import { Team } from './staff/Team';
+import { CustomerProfile, Customers } from './staff/Customers';
 import { Loading, Problem, messageOf } from './staff/common';
 
 function useHashRoute(): string[] {
@@ -107,19 +108,25 @@ const INSPECT: NavItem = {
   href: '#/inspect',
 };
 const JOBS: NavItem = { key: 'jobs', label: 'Job board', icon: 'list', href: '#/jobs' };
+const CUSTOMERS: NavItem = {
+  key: 'customers',
+  label: 'Customers',
+  icon: 'user',
+  href: '#/customers',
+};
 const TEAM: NavItem = { key: 'team', label: 'Team', icon: 'user', href: '#/team' };
 const ACCOUNT: NavItem = { key: 'account', label: 'Account', icon: 'lock', href: '#/account' };
 const LEGS: NavItem = { key: 'legs', label: 'My trips', icon: 'car', href: '#/legs' };
 
 // Each person sees the screens for their own job and nothing else.
 const NAV: Record<string, { items: NavItem[]; home: string }> = {
-  lounge_manager: { items: [OVERVIEW, INTAKE, PRICE, JOBS], home: 'overview' },
-  workshop_manager: { items: [OVERVIEW, INTAKE, INSPECT, JOBS], home: 'overview' },
+  lounge_manager: { items: [OVERVIEW, INTAKE, PRICE, JOBS, CUSTOMERS], home: 'overview' },
+  workshop_manager: { items: [OVERVIEW, INTAKE, INSPECT, JOBS, CUSTOMERS], home: 'overview' },
   technician: { items: [INSPECT], home: 'inspect' },
   driver: { items: [LEGS], home: 'legs' },
-  admin: { items: [OVERVIEW, JOBS], home: 'overview' },
+  admin: { items: [OVERVIEW, JOBS, CUSTOMERS], home: 'overview' },
   finance: { items: [OVERVIEW], home: 'overview' },
-  super_admin: { items: [OVERVIEW, JOBS, TEAM], home: 'overview' },
+  super_admin: { items: [OVERVIEW, JOBS, CUSTOMERS, TEAM], home: 'overview' },
 };
 
 export default function LiveApp() {
@@ -154,6 +161,11 @@ function Signed({ onSignOut }: { onSignOut: () => void }) {
   let page;
   if (current === 'account') page = <ChangePassword onDone={me.reload} />;
   else if (current === 'team' && staff.role === 'super_admin') page = <Team selfId={staff.id} />;
+  else if (
+    current === 'customers' &&
+    ['admin', 'super_admin', 'lounge_manager', 'workshop_manager'].includes(staff.role)
+  )
+    page = id ? <CustomerProfile id={id} /> : <Customers />;
   else if (current === 'intake') page = <Intake />;
   else if (current === 'inspect') page = id ? <InspectionCapture id={id} /> : <InspectionQueue />;
   else if (current === 'price') page = id ? <PricingEditor id={id} /> : <PricingQueue />;

@@ -8,6 +8,10 @@ import { digitsOnly, hashPassword } from '../portal/passwords.js';
 import { issueCustomerToken, revokeProfileLinks } from '../portal/tokens.js';
 
 const searchSchema = z.object({ query: z.string().trim().min(2).max(100) });
+const directorySchema = z.object({
+  query: z.string().trim().max(100).optional().default(''),
+  page: z.coerce.number().int().min(1).max(100000).optional().default(1),
+});
 const customerSchema = z
   .object({
     fullName: z.string().trim().min(1).max(200),
@@ -57,6 +61,65 @@ export function registerCrmRoutes(app: FastifyInstance, db: Pool): void {
         [like(query), digits, like(digits)],
       );
       return { customers: result.rows };
+    },
+  );
+
+  // Admin directory: a complete, paginated list with a count for the current search.
+  app.get(
+    '/api/customers/directory',
+    { preHandler: app.requirePermission('customers:read') },
+    async (request, reply) => {
+      const { query, page } = directorySchema.parse(request.query);
+      const digits = query.replace(/\D/g, '');
+      const params = [like(query), digits, like(digits)];
+      const where = query
+        ? `WHERE full_name ILIKE $1 ESCAPE '\\' OR email ILIKE $1 ESCAPE '\\'
+           OR ($2 <> '' AND mobile_search LIKE $3)`
+        : '';
+      const count = await db.query<{ total: string }>(
+        `SELECT count(*)::text AS total FROM avc.customers ${where}`,
+        query ? params : [],
+      );
+      const customers = await db.query(
+        `SELECT id, full_name AS "fullName", mobile_number AS "mobileNumber", email,
+              created_at AS "createdAt" FROM avc.customers ${where}
+       ORDER BY created_at DESC, id DESC LIMIT 25 OFFSET $${query ? 4 : 1}`,
+        [...(query ? params : []), (page - 1) * 25],
+      );
+      reply.header('cache-control', 'no-store');
+      return { total: Number(count.rows[0]!.total), page, pageSize: 25, customers: customers.rows };
+    },
+  );
+
+  app.get(
+    '/api/customers/:id',
+    { preHandler: app.requirePermission('customers:read') },
+    async (request, reply) => {
+      const { id } = z.object({ id: z.uuid() }).parse(request.params);
+      const customer = await db.query(
+        `SELECT id, full_name AS "fullName", mobile_number AS "mobileNumber", email,
+              created_at AS "createdAt" FROM avc.customers WHERE id = $1`,
+        [id],
+      );
+      if (!customer.rowCount)
+        throw new AppError(404, 'CUSTOMER_NOT_FOUND', 'Customer was not found');
+      const vehicles = await db.query(
+        `SELECT id, customer_id AS "customerId", vin, license_plate AS "licensePlate", make,
+              model, model_year AS "modelYear", color, created_at AS "createdAt"
+       FROM avc.vehicles WHERE customer_id = $1 ORDER BY created_at DESC`,
+        [id],
+      );
+      const jobs = await db.query(
+        `SELECT j.id, j.job_number::text AS "jobNumber", j.work_stage AS stage,
+              j.created_at AS "createdAt", j.updated_at AS "updatedAt",
+              j.mileage_km AS "mileageKm", j.intake_condition AS "intakeCondition",
+              v.id AS "vehicleId", v.make, v.model, v.license_plate AS "licensePlate"
+       FROM avc.job_cards j JOIN avc.vehicles v ON v.id = j.vehicle_id
+       WHERE j.customer_id = $1 ORDER BY j.created_at DESC`,
+        [id],
+      );
+      reply.header('cache-control', 'no-store');
+      return { customer: customer.rows[0], vehicles: vehicles.rows, jobs: jobs.rows };
     },
   );
 

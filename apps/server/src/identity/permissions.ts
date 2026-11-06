@@ -13,9 +13,9 @@ export type StaffRole = (typeof STAFF_ROLES)[number];
 // (see docs/OPEN_QUESTIONS.md). Grants below are the current working assumption.
 export const PERMISSIONS = {
   'staff:self': STAFF_ROLES,
-  'customers:read': ['lounge_manager', 'admin'],
+  'customers:read': ['lounge_manager', 'workshop_manager', 'admin'],
   'customers:create': ['lounge_manager', 'workshop_manager'],
-  'vehicles:read': ['lounge_manager', 'admin'],
+  'vehicles:read': ['lounge_manager', 'workshop_manager', 'admin'],
   'vehicles:create': ['lounge_manager', 'workshop_manager'],
   'jobs:read': ['lounge_manager', 'workshop_manager', 'admin'],
   'jobs:create_intake': ['lounge_manager', 'workshop_manager'],

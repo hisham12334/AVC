@@ -192,6 +192,29 @@ describe.sequential('staff intake and jobs with PostgreSQL', () => {
     ).toBe(1);
   });
 
+  it('lists customers with a count and keeps profiles behind staff permissions', async () => {
+    const customerId = (await customer()).json().customer.id;
+    const vehicleId = (await vehicle(customerId)).json().vehicle.id;
+    const jobId = (await intake(customerId, vehicleId)).json().job.id;
+    const directory = await app.inject({ url: '/api/customers/directory', headers: auth() });
+    expect(directory.json()).toMatchObject({ total: 1, page: 1, pageSize: 25 });
+    expect(directory.json().customers[0].id).toBe(customerId);
+    const searched = await app.inject({
+      url: '/api/customers/directory?query=1112222',
+      headers: auth(),
+    });
+    expect(searched.json().total).toBe(1);
+    const profile = await app.inject({ url: `/api/customers/${customerId}`, headers: auth() });
+    expect(profile.json().customer.id).toBe(customerId);
+    expect(profile.json().vehicles[0].id).toBe(vehicleId);
+    expect(profile.json().jobs[0]).toMatchObject({ id: jobId, vehicleId, mileageKm: 24000 });
+    expect((await app.inject(`/api/customers/${customerId}`)).statusCode).toBe(401);
+    expect(
+      (await app.inject({ url: `/api/customers/${customerId}`, headers: auth('technician-token') }))
+        .statusCode,
+    ).toBe(403);
+  });
+
   it('enforces transition version and status without producing extra events', async () => {
     const customerId = (await customer()).json().customer.id;
     const vehicleId = (await vehicle(customerId)).json().vehicle.id;

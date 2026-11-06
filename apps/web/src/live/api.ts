@@ -426,5 +426,25 @@ export type ApiPortalMe = {
     model: string;
     licensePlate: string | null;
     awaitingYou: boolean;
+    mileageKm: number;
+    intakeCondition: string;
+  }[];
+};
+
+export type ApiCustomerProfile = {
+  customer: ApiCustomer & { createdAt: string };
+  vehicles: (ApiVehicle & { id: string; createdAt: string })[];
+  jobs: {
+    id: string;
+    jobNumber: string;
+    stage: StageKey;
+    createdAt: string;
+    updatedAt: string;
+    mileageKm: number;
+    intakeCondition: string;
+    vehicleId: string;
+    make: string;
+    model: string;
+    licensePlate: string | null;
   }[];
 };

@@ -119,13 +119,14 @@ export function registerPortalRoutes(app: FastifyInstance, db: Pool): void {
       [principal.customerId],
     );
     const vehicles = await db.query(
-      `SELECT id, make, model, model_year AS "modelYear", color, license_plate AS "licensePlate"
+      `SELECT id, make, model, model_year AS "modelYear", color, vin, license_plate AS "licensePlate"
        FROM avc.vehicles WHERE customer_id = $1 ORDER BY created_at`,
       [principal.customerId],
     );
     const jobs = await db.query(
       `SELECT j.id, j.job_number::text AS "jobNumber", j.work_stage AS stage, j.created_at AS "createdAt",
-              j.updated_at AS "updatedAt", v.make, v.model, v.license_plate AS "licensePlate",
+              j.updated_at AS "updatedAt", j.mileage_km AS "mileageKm",
+              j.intake_condition AS "intakeCondition", v.make, v.model, v.license_plate AS "licensePlate",
               EXISTS (SELECT 1 FROM avc.quotes q WHERE q.job_card_id = j.id AND q.status = 'sent') AS "awaitingYou"
        FROM avc.job_cards j JOIN avc.vehicles v ON v.id = j.vehicle_id
        WHERE j.customer_id = $1 ORDER BY j.created_at DESC`,

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { STAGES } from '../../ui/model';
+import { Qr } from '../../ui/evidence';
 import { Icon } from '../../ui/ui';
 import { api, ApiError, customerToken, useApi, type ApiPortalMe } from '../api';
 import { BillScreen, PortalJobTracker } from '../LiveTrack';
@@ -112,6 +113,7 @@ function Login({ onDone, notice }: { onDone: () => void; notice?: string }) {
 }
 
 const customerStage = (key: string) => STAGES.find((s) => s.key === key)?.customerLabel ?? key;
+const staffProfileLink = (id: string) => `${location.origin}/#/customers/${id}`;
 
 function Home({ onExpired }: { onExpired: () => void }) {
   const { state, reload } = useApi(
@@ -140,6 +142,16 @@ function Home({ onExpired }: { onExpired: () => void }) {
   return (
     <main className="p-pad">
       <h1>Hello, {customer.fullName.split(' ')[0]}</h1>
+      <section className="card">
+        <h2>Your AVC scan code</h2>
+        <div className="qr-block">
+          <Qr value={staffProfileLink(customer.id)} />
+          <p className="muted small">
+            Show this code to AVC staff to open your company record, including your cars and visits.
+            Staff sign-in is required.
+          </p>
+        </div>
+      </section>
       {customer.passwordIsDefault && (
         <p
           className="banner"
@@ -210,9 +222,30 @@ function Home({ onExpired }: { onExpired: () => void }) {
           <li key={v.id}>
             {[v.modelYear, v.make, v.model].filter(Boolean).join(' ')}
             {v.licensePlate ? ` · ${v.licensePlate}` : ''}
+            {v.color ? ` · ${v.color}` : ''}
+            {v.vin ? ` · VIN ${v.vin}` : ''}
           </li>
         ))}
       </ul>
+      <h2 className="mini">Visit details</h2>
+      {jobs.length === 0 ? (
+        <p className="empty">No visits yet.</p>
+      ) : (
+        <ul className="mini-list">
+          {jobs.map((job) => (
+            <li key={job.id}>
+              <a href={`#/job/${job.id}`}>
+                AVC-{job.jobNumber} · {job.make} {job.model}
+              </a>
+              {' · '}
+              {new Date(job.createdAt).toLocaleDateString('en-GB')}
+              {' · '}
+              {job.mileageKm.toLocaleString()} km
+              <p className="muted small">{job.intakeCondition}</p>
+            </li>
+          ))}
+        </ul>
+      )}
     </main>
   );
 }
