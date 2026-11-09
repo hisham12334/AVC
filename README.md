@@ -47,3 +47,9 @@ One web app, five kinds of user. Each signs in and sees only their own screens:
 - **Admin / workshop manager / finance**: overview and job board.
 
 Uploaded photos are kept on the server's disk in `UPLOAD_DIR` (default `apps/server/uploads`, not committed), not in cloud storage, until object storage is chosen. Back that directory up with the database.
+
+## Customer follow-ups and control tower
+
+Migration 0006 adds customer messages, declined-work and service follow-ups, and job action plans. The **Control tower** shows active jobs, stalled stages and overdue handover promises. Managers can set an owner, next action and promised time. **Follow-ups** shows declined work 30 days after delivery and a service reminder 180 days after delivery; staff can mark an opportunity contacted, booked or dismissed. These dates are initial defaults, not a service schedule calculated from mileage or manufacturer guidance. The customer controls reminder email consent under **Users**.
+
+The customer messaging worker runs every minute. It queues transactional quote and stage updates plus one unanswered-quote reminder after 24 hours. Follow-up emails require the customer's opt-in. To deliver email, set `CUSTOMER_MESSAGE_ENDPOINT`, `CUSTOMER_MESSAGE_API_KEY`, and `CUSTOMER_PORTAL_URL` (HTTPS). The endpoint must accept `POST` JSON `{to, subject, text}`, a bearer token and an `Idempotency-Key` header, and return a 2xx response only after accepting the message. Without these settings, messages remain pending and visible to staff; no email is sent. Delivery retries transient failures, and the endpoint must deduplicate on the idempotency key. Run `pnpm migrate:up` before starting the updated server.

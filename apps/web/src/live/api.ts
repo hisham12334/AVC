@@ -414,6 +414,7 @@ export type ApiPortalMe = {
     email: string;
     mobileNumber: string;
     passwordIsDefault: boolean;
+    serviceRemindersOptIn: boolean;
   };
   vehicles: ApiVehicle[];
   jobs: {

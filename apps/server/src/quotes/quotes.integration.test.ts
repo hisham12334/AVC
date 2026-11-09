@@ -8,6 +8,7 @@ import { createApp } from '../app.js';
 import { loadLocalEnvFile, type Config } from '../config.js';
 import { AppError } from '../errors.js';
 import { dispatchWebhooks, signPayload, type Fetcher } from '../integration/webhooks.js';
+import { prepareCustomerWork } from '../engagement/worker.js';
 import { migrate } from '../migrations.js';
 import type { TokenVerifier } from '../identity/auth.js';
 
@@ -43,7 +44,7 @@ const app = createApp(config, pool, verifier);
 
 type Res = { status: number; body: any };
 async function call(
-  method: 'GET' | 'POST' | 'DELETE',
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   url: string,
   token?: string,
   payload?: unknown,
@@ -238,6 +239,69 @@ afterAll(async () => {
 });
 
 describe('inspection, pricing and approval', () => {
+  it('tracks next actions and creates consent-gated follow-ups without duplicates', async () => {
+    const { jobId, customer } = await approvedJob();
+    const tower = await call('GET', '/api/control-tower', 'manager-token');
+    expect(tower.status).toBe(200);
+    expect(tower.body.jobs.some((job: { id: string }) => job.id === jobId)).toBe(true);
+    const plan = await call('PATCH', `/api/control-tower/${jobId}`, 'manager-token', {
+      nextAction: 'Confirm parts arrival',
+      ownerStaffId: null,
+      promisedAt: new Date(Date.now() + 86400000).toISOString(),
+    });
+    expect(plan.status).toBe(200);
+    expect(
+      (await call('GET', '/api/control-tower', 'manager-token')).body.jobs.find(
+        (job: { id: string }) => job.id === jobId,
+      ).nextAction,
+    ).toBe('Confirm parts arrival');
+    for (const stage of ['in_bay', 'qc', 'ready', 'delivered'])
+      expect((await advance(jobId)).body.job.workStage).toBe(stage);
+
+    await prepareCustomerWork(pool);
+    await prepareCustomerWork(pool);
+    expect(
+      (await call('GET', '/api/portal/messages', customer.profileToken)).body.messages.length,
+    ).toBeGreaterThan(0);
+    const followups = await call('GET', '/api/engagement/followups', 'manager-token');
+    expect(followups.body.followups.map((f: { kind: string }) => f.kind).sort()).toEqual([
+      'declined_work',
+      'service_reminder',
+    ]);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS count FROM avc.customer_messages WHERE kind IN ('declined_work', 'service_reminder')",
+        )
+      ).rows[0].count,
+    ).toBe(0);
+    expect(
+      (
+        await call('POST', '/api/portal/reminder-preference', customer.profileToken, {
+          enabled: true,
+        })
+      ).status,
+    ).toBe(200);
+    await pool.query("UPDATE avc.service_followups SET due_at = now() - interval '1 minute'");
+    await prepareCustomerWork(pool);
+    await prepareCustomerWork(pool);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS count FROM avc.customer_messages WHERE kind IN ('declined_work', 'service_reminder')",
+        )
+      ).rows[0].count,
+    ).toBe(2);
+    const first = followups.body.followups[0];
+    expect(
+      (
+        await call('PATCH', `/api/engagement/followups/${first.id}`, 'manager-token', {
+          status: 'booked',
+        })
+      ).status,
+    ).toBe(200);
+  });
+
   it('runs a car from inspection to delivery: technician describes, advisor prices, customer decides', async () => {
     const { jobId, customer } = await jobInInspection();
     await startInspection(jobId);

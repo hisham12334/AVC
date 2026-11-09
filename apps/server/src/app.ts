@@ -11,6 +11,7 @@ import { registerBranchRoutes } from './branches/routes.js';
 import { registerCrmRoutes } from './crm/routes.js';
 import { registerDashboardRoutes } from './dashboard/routes.js';
 import { registerEvidenceFiles } from './evidence/files.js';
+import { registerEngagementRoutes } from './engagement/routes.js';
 import { registerIntegrationRoutes } from './integration/routes.js';
 import { registerInspectionRoutes } from './inspection/routes.js';
 import { registerJobRoutes } from './jobs/routes.js';
@@ -59,6 +60,7 @@ export function createApp(
   registerIdentity(app, db, verifier);
   registerStaffAccountRoutes(app, db);
   registerCrmRoutes(app, db);
+  registerEngagementRoutes(app, db);
   registerJobRoutes(app, db);
   registerBranchRoutes(app, db);
   registerInspectionRoutes(app, db);

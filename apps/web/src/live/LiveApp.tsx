@@ -11,6 +11,7 @@ import { PricingEditor, PricingQueue } from './staff/Pricing';
 import { ChangePassword } from './staff/Account';
 import { Team } from './staff/Team';
 import { CustomerProfile, Customers } from './staff/Customers';
+import { ControlTower, Followups } from './staff/Engagement';
 import { Loading, Problem, messageOf } from './staff/common';
 
 function useHashRoute(): string[] {
@@ -115,18 +116,31 @@ const CUSTOMERS: NavItem = {
   href: '#/customers',
 };
 const TEAM: NavItem = { key: 'team', label: 'Team', icon: 'user', href: '#/team' };
+const TOWER: NavItem = { key: 'tower', label: 'Control tower', icon: 'grid', href: '#/tower' };
+const FOLLOWUPS: NavItem = {
+  key: 'followups',
+  label: 'Follow-ups',
+  icon: 'clock',
+  href: '#/followups',
+};
 const ACCOUNT: NavItem = { key: 'account', label: 'Account', icon: 'lock', href: '#/account' };
 const LEGS: NavItem = { key: 'legs', label: 'My trips', icon: 'car', href: '#/legs' };
 
 // Each person sees the screens for their own job and nothing else.
 const NAV: Record<string, { items: NavItem[]; home: string }> = {
-  lounge_manager: { items: [OVERVIEW, INTAKE, PRICE, JOBS, CUSTOMERS], home: 'overview' },
-  workshop_manager: { items: [OVERVIEW, INTAKE, INSPECT, JOBS, CUSTOMERS], home: 'overview' },
+  lounge_manager: {
+    items: [OVERVIEW, TOWER, FOLLOWUPS, INTAKE, PRICE, JOBS, CUSTOMERS],
+    home: 'overview',
+  },
+  workshop_manager: {
+    items: [OVERVIEW, TOWER, FOLLOWUPS, INTAKE, INSPECT, JOBS, CUSTOMERS],
+    home: 'overview',
+  },
   technician: { items: [INSPECT], home: 'inspect' },
   driver: { items: [LEGS], home: 'legs' },
-  admin: { items: [OVERVIEW, JOBS, CUSTOMERS], home: 'overview' },
+  admin: { items: [OVERVIEW, TOWER, FOLLOWUPS, JOBS, CUSTOMERS], home: 'overview' },
   finance: { items: [OVERVIEW], home: 'overview' },
-  super_admin: { items: [OVERVIEW, JOBS, CUSTOMERS, TEAM], home: 'overview' },
+  super_admin: { items: [OVERVIEW, TOWER, FOLLOWUPS, JOBS, CUSTOMERS, TEAM], home: 'overview' },
 };
 
 export default function LiveApp() {
@@ -167,6 +181,8 @@ function Signed({ onSignOut }: { onSignOut: () => void }) {
   )
     page = id ? <CustomerProfile id={id} /> : <Customers />;
   else if (current === 'intake') page = <Intake />;
+  else if (current === 'tower') page = <ControlTower canManage={staff.role !== 'finance'} />;
+  else if (current === 'followups') page = <Followups canManage={staff.role !== 'admin'} />;
   else if (current === 'inspect') page = id ? <InspectionCapture id={id} /> : <InspectionQueue />;
   else if (current === 'price') page = id ? <PricingEditor id={id} /> : <PricingQueue />;
   else if (current === 'legs') page = id ? <DriverComplete id={id} /> : <DriverLegs />;

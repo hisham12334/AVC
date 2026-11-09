@@ -22,6 +22,7 @@ const passwordSchema = z
   })
   .strict();
 const idSchema = z.object({ id: z.uuid() });
+const reminderPreferenceSchema = z.object({ enabled: z.boolean() }).strict();
 
 type AccountRow = {
   customerId: string;
@@ -114,7 +115,8 @@ export function registerPortalRoutes(app: FastifyInstance, db: Pool): void {
     const principal = await authenticateCustomer(db, request);
     const customer = await db.query(
       `SELECT c.id, c.full_name AS "fullName", c.email, c.mobile_number AS "mobileNumber",
-              a.password_is_default AS "passwordIsDefault"
+              a.password_is_default AS "passwordIsDefault",
+              c.service_reminders_opt_in AS "serviceRemindersOptIn"
        FROM avc.customers c JOIN avc.customer_accounts a ON a.customer_id = c.id WHERE c.id = $1`,
       [principal.customerId],
     );
@@ -142,6 +144,27 @@ export function registerPortalRoutes(app: FastifyInstance, db: Pool): void {
     await ownedJob(principal, id);
     reply.header('cache-control', 'no-store');
     return buildJobView(db, id);
+  });
+
+  app.post('/api/portal/reminder-preference', async (request) => {
+    const principal = await authenticateCustomer(db, request);
+    const { enabled } = reminderPreferenceSchema.parse(request.body);
+    await db.query('UPDATE avc.customers SET service_reminders_opt_in = $2 WHERE id = $1', [
+      principal.customerId,
+      enabled,
+    ]);
+    return { serviceRemindersOptIn: enabled };
+  });
+
+  app.get('/api/portal/messages', async (request, reply) => {
+    const principal = await authenticateCustomer(db, request);
+    const result = await db.query(
+      `SELECT id, kind, subject, body, created_at AS "createdAt"
+      FROM avc.customer_messages WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 30`,
+      [principal.customerId],
+    );
+    reply.header('cache-control', 'no-store');
+    return { messages: result.rows };
   });
 
   app.post('/api/portal/jobs/:id/decisions', async (request, reply) => {

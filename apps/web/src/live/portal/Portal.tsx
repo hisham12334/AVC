@@ -121,6 +121,15 @@ function Home({ onExpired }: { onExpired: () => void }) {
     'me',
     30_000,
   );
+  const messages = useApi(
+    () =>
+      api<{ messages: { id: string; subject: string; body: string; createdAt: string }[] }>(
+        '/api/portal/messages',
+        { auth: 'customer' },
+      ),
+    'portal-messages',
+    30_000,
+  );
   useEffect(() => {
     if (state.kind === 'error' && state.error.status === 401) onExpired();
   }, [state, onExpired]);
@@ -162,6 +171,20 @@ function Home({ onExpired }: { onExpired: () => void }) {
             Change it
           </a>
         </p>
+      )}
+      {messages.state.kind === 'ready' && messages.state.data.messages.length > 0 && (
+        <section className="card">
+          <h2>Updates from AVC</h2>
+          <ul className="mini-list">
+            {messages.state.data.messages.slice(0, 5).map((message) => (
+              <li key={message.id}>
+                <strong>{message.subject}</strong> ·{' '}
+                {new Date(message.createdAt).toLocaleDateString('en-GB')}
+                <p className="muted small">{message.body}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       <h2 className="mini">In our care</h2>
       {active.length === 0 && <p className="empty">None of your cars are with us right now.</p>}
@@ -280,6 +303,35 @@ function Users({ onSignOut }: { onSignOut: () => void }) {
             <dd>{customer.mobileNumber}</dd>
           </div>
         </dl>
+      </section>
+      <section className="card">
+        <h2>Service reminders</h2>
+        <p className="muted small">
+          Get email reminders about previously declined work and your next service. You can turn
+          these off at any time.
+        </p>
+        <label className="field">
+          <span>
+            <input
+              type="checkbox"
+              checked={customer.serviceRemindersOptIn}
+              onChange={async (event) => {
+                const enabled = event.target.checked;
+                try {
+                  await api('/api/portal/reminder-preference', {
+                    method: 'POST',
+                    auth: 'customer',
+                    body: { enabled },
+                  });
+                  reload();
+                } catch (error) {
+                  setMessage({ ok: false, text: messageOf(error) });
+                }
+              }}
+            />{' '}
+            Email me service reminders
+          </span>
+        </label>
       </section>
       <form
         className="card form"
